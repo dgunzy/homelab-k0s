@@ -1,9 +1,13 @@
 # homelab-k0s
 
-A single-node k0s cluster for learning GPU workloads on Kubernetes: GPU Operator,
-DCGM telemetry, inference serving, batch scheduling. It runs on a dual-boot desktop
-with an RTX 2070. Everything is declarative and pinned, so the node can be rebuilt
-from this repo and a USB stick.
+A GPU Kubernetes lab on a dual-boot desktop with an RTX 2070. The desktop is a
+KVM hypervisor: k0s nodes run as Cloud Hypervisor VMs (via
+[banlieue](https://github.com/firestoned/banlieue)), and the GPU is passed
+through whole to a worker VM. On top of that: GPU Operator, DCGM telemetry,
+Cluster API node lifecycle, inference serving, batch scheduling. Everything
+is declarative and pinned, so the host can be rebuilt from this repo and a
+USB stick. The design and its reasons are in
+[docs/02](docs/02-virtualized-gpu-cluster.md).
 
 ## Layout
 
@@ -12,22 +16,27 @@ bootstrap/
   install/                  OS install (run from Windows)
     build-usb.ps1           builds the autoinstall USB stick
     hosts/k0s-gpu-01/       autoinstall template (no secrets)
-  host/
-    prepare-host.sh         pinned NVIDIA driver, nouveau blacklist (run on the node)
+  host/                     the hypervisor host (run on k0s-gpu-01)
+    prepare-host.sh         VFIO, br-lab network, banlieue CH host, k0sctl, tailscale, GRUB
+    gpu-smoke-vm.sh         throwaway VM that proves GPU passthrough end to end
+    reboot-to-windows.sh    one-shot boot into Windows
+  node/                     inside VMs
+    prepare-gpu-node.sh     pinned NVIDIA driver for the GPU worker VM
 docs/                       what I learned and why it's set up this way
 ```
 
-Later: `clusters/homelab/` (Flux Operator), `infrastructure/` (GPU Operator,
-monitoring, Kueue), `apps/` (inference, agents). See [CLAUDE.md](CLAUDE.md) for the roadmap.
+Later: the management cluster bootstrap, `clusters/homelab/` (Flux Operator),
+`infrastructure/` (banlieue, Cluster API, GPU Operator, monitoring),
+`apps/` (inference, sandboxes). See [CLAUDE.md](CLAUDE.md) for the roadmap.
 
 ## Hardware: k0s-gpu-01
 
 | | |
 |---|---|
-| Board | ASUS TUF B360M-PLUS GAMING S (UEFI; boot menu **F8**, setup **Del**) |
-| CPU / RAM | i7-8700 (6c/12t), 16 GB |
-| GPU | NVIDIA RTX 2070 (Turing, 8 GB, CC 7.5) |
-| Network | Wi-Fi, Intel AC 9461; I219-V Ethernet configured but unplugged |
+| Board | ASUS TUF B360M-PLUS GAMING S, BIOS 3202 (UEFI; boot menu **F8**, setup **Del**) |
+| CPU / RAM | i7-8700 (6c/12t), 16 GB (2× 8 GB DDR4-2666; two slots free) |
+| GPU | NVIDIA RTX 2070 (TU106, Turing, 8 GB, CC 7.5), IOMMU group 1 on its own |
+| Network | Wi-Fi, Intel AC 9461 (`wlo1`); I219-V Ethernet configured but unplugged |
 
 | Disk | Use |
 |---|---|
@@ -39,53 +48,85 @@ monitoring, Kueue), `apps/` (inference, agents). See [CLAUDE.md](CLAUDE.md) for 
 
 1. Download `ubuntu-24.04.5-live-server-amd64.iso` from https://releases.ubuntu.com/24.04.5/
    into `~\Downloads\ubuntu-iso\`. Its SHA256 is pinned in the script.
-2. Make sure your GitHub account has an SSH public key.
-3. Insert a FAT32 USB stick (it gets erased) and run:
+2. Add **every** device's SSH public key to your GitHub account; the stick gets all of them.
+3. Use a FAT32 USB volume (it gets erased). On a stick with two partitions, give
+   the drive letter of the FAT32 one. Run:
    ```powershell
    cd ~\homelab-k0s
    .\bootstrap\install\build-usb.ps1 -GitHubUser <github-user> -UsbDriveLetter F
    ```
+   It verifies the password hash it writes and prints a command to double-check it on Linux.
 
 ## 2. Install
 
-1. Reboot, press **F8**, and choose the **UEFI:** entry for the USB stick.
-2. Choose **Try or Install Ubuntu Server**. At **"Continue with autoinstall?"**, answer yes.
-3. It installs to the ADATA disk only and then reboots. Remove the stick and wipe it,
+1. Plug the stick into a **rear motherboard USB port** (the desk hub fails to enumerate it).
+2. Reboot, press **F8**, and choose the **UEFI:** entry for the USB stick.
+3. Choose **Try or Install Ubuntu Server**. At **"Continue with autoinstall?"**, answer yes.
+4. It installs to the ADATA disk only and then reboots. Remove the stick and wipe it,
    since it holds the Wi-Fi PSK.
+5. At the console, run the first-boot checks in
+   [docs/01](docs/01-host-install.md#first-boot-checks-run-at-the-console-or-over-ssh).
+   If there's no network, follow the recovery steps there.
 
 Ubuntu adds an `ubuntu` UEFI boot entry and puts it first, so power-on boots Linux.
 
-## 3. Host prep (on the node)
+## 3. BIOS (once)
+
+**Del** at power-on → Advanced Mode (F7):
+
+- Advanced → CPU Configuration → **Intel Virtualization Technology: Enabled** (VT-x, for KVM)
+- Advanced → System Agent (SA) Configuration → **VT-d: Enabled** (IOMMU, for GPU passthrough)
+- Optional: System Agent → Graphics Configuration → **iGPU Multi-Monitor: Enabled**, so
+  the motherboard's HDMI can show a Linux console once the 2070 belongs to a VM.
+
+## 4. Host prep (on the node)
 
 ```bash
-ssh ops@k0s-gpu-01.local                # mDNS via avahi; or use the IP shown on the console
+ssh ops@k0s-gpu-01.local
 git clone https://github.com/<github-user>/homelab-k0s && cd homelab-k0s
-sudo ./bootstrap/host/prepare-host.sh   # pinned NVIDIA R580 server-open + reboot-to-windows helper
+sudo ./bootstrap/host/prepare-host.sh   # VFIO, br-lab, banlieue CH host, k0sctl, tailscale, GRUB
 sudo reboot
-nvidia-smi
+sudo ./bootstrap/host/prepare-host.sh   # again: verifies all four GPU functions are on vfio-pci
+sudo tailscale up --advertise-routes=10.42.0.0/24   # once; approve the route in the admin console
 ```
+
+After this the host is headless (the 2070 belongs to VFIO) and runs no NVIDIA driver.
+
+## 5. Prove GPU passthrough
+
+```bash
+sudo ./bootstrap/host/gpu-smoke-vm.sh up       # Ubuntu VM with the 2070, at 10.42.0.10
+sudo ./bootstrap/host/gpu-smoke-vm.sh verify   # installs R580 in the guest, runs nvidia-smi
+sudo ./bootstrap/host/gpu-smoke-vm.sh destroy  # when done
+```
+
+From the MacBook (over Tailscale, or through the host):
+`ssh -J ops@k0s-gpu-01.local ubuntu@10.42.0.10`.
+
+Next: the management cluster ([docs/02, phase 2](docs/02-virtualized-gpu-cluster.md#phases)).
 
 ## Switching between Linux and Windows
 
-Linux is the default, so a power cut or a plain reboot always comes back as a cluster node.
+Only one OS runs at a time. Linux is the default, so a power cut or an unattended
+reboot always comes back as the cluster host (VMs start at boot).
 
-| To | How |
-|---|---|
-| Windows | `ssh ops@k0s-gpu-01.local sudo reboot-to-windows` sets UEFI `BootNext` (a one-shot override) and reboots |
-| Linux | Restart Windows normally |
+| Where you are | To get Windows | To get Linux |
+|---|---|---|
+| At the machine | Pick **Windows Boot Manager** in the GRUB menu (shown for 10s at every boot) | Restart; Ubuntu is the default |
+| Another device (e.g. MacBook), Linux running | `ssh ops@k0s-gpu-01.local sudo reboot-to-windows` (one-shot UEFI `BootNext`) | n/a |
 
-There's no BIOS menu and no change to the saved boot order. F8 at power-on still works as a fallback.
-
-Optional: add Windows to the GRUB menu (this only reads the Windows ESP):
-```bash
-echo 'GRUB_DISABLE_OS_PROBER=false' | sudo tee /etc/default/grub.d/90-os-prober.cfg
-sudo update-grub
-```
+F8 at power-on still works as a fallback. To SSH from a new device, add its
+public key to GitHub and run `ssh-import-id gh:<github-user>` on the node.
+macOS resolves `.local` names out of the box (Bonjour).
 
 ## Pinned versions
 
-| Component | Version |
-|---|---|
-| Ubuntu Server | 24.04.5 LTS (SHA256 pinned in `build-usb.ps1`) |
-| NVIDIA driver | R580 `server-open` (LTSB), apt-held |
-| k0s | *next step* |
+| Component | Version | Where |
+|---|---|---|
+| Ubuntu Server | 24.04.5 LTS (SHA256 pinned) | `build-usb.ps1` |
+| banlieue (incl. Cloud Hypervisor v53.0 + firmware it pins) | v0.5.7 (SHA256 pinned) | `prepare-host.sh` |
+| k0sctl | v0.31.3 (SHA256 pinned) | `prepare-host.sh` |
+| Tailscale | 1.104.7, apt-held | `prepare-host.sh` |
+| Ubuntu cloud image (VMs) | noble `release-20261017` (SHA256 pinned) | `gpu-smoke-vm.sh` |
+| NVIDIA driver (in the GPU VM) | R580 `server-open` (LTSB), apt-held | `prepare-gpu-node.sh` |
+| k0s | *phase 2* | |

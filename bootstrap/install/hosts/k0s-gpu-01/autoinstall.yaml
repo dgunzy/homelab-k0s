@@ -10,9 +10,23 @@
 # Hardware: ASUS TUF B360M-PLUS GAMING S, i7-8700, 16 GB, RTX 2070
 # Target disk: ADATA SU650 240 GB SSD (the ONLY disk Linux may touch)
 #   - Windows lives on the WD 1 TB SSD; the WD 1 TB HDD is left alone.
+#
+# Lessons from the first install (docs/01-host-install.md, "Install
+# retrospective"): the live ISO has no wpa_supplicant, so Wi-Fi never came up
+# and the install ran offline. Offline, any package not on the ISO aborts the
+# install, which is why late-commands (sudoers) never ran. This template is
+# written so an offline install still finishes with SSH, Wi-Fi and sudo.
 
 autoinstall:
   version: 1
+
+  # Runs in the live environment before the network step. The live server ISO
+  # ships no wpa_supplicant, so netplan-wpa-wlo1.service fails (203/EXEC) and
+  # the install goes offline. Install it from the ISO's own package pool so
+  # the network step can bring up Wi-Fi. `|| true`: if the pool layout ever
+  # changes, an offline install is still better than no install.
+  early-commands:
+    - dpkg -i /cdrom/pool/main/p/pcsc-lite/libpcsclite1_*.deb /cdrom/pool/main/w/wpa/wpasupplicant_*.deb || true
 
   locale: en_US.UTF-8
   keyboard:
@@ -45,10 +59,11 @@ autoinstall:
           macaddress: "0c:9d:92:bc:13:5b"   # Intel I219-V (unplugged today)
         dhcp4: true
         optional: true
+    # networkd can't match Wi-Fi by MAC ("networkd backend does not support
+    # wifi with match:, only by interface name"), so key it by name.
+    # wlo1 = Intel Wireless-AC 9461 (MAC 1c:1b:b5:34:c4:5c), confirmed in the installer.
     wifis:
-      wifi:
-        match:
-          macaddress: "1c:1b:b5:34:c4:5c"   # Intel Wireless-AC 9461
+      wlo1:
         dhcp4: true
         access-points:
           "__WIFI_SSID__":
@@ -60,21 +75,60 @@ autoinstall:
     authorized-keys:
 __SSH_AUTHORIZED_KEYS__
 
-  # The NVIDIA driver is deliberately NOT installed here: `drivers: install`
-  # picks whatever ubuntu-drivers recommends that day (unpinned). The pinned
-  # driver branch is installed by bootstrap/host/prepare-host.sh instead.
+  # The NVIDIA driver is deliberately NOT installed here, and never on this
+  # host: the GPU is passed through to a VM (docs/02). The driver is
+  # installed inside that VM by bootstrap/node/prepare-gpu-node.sh.
   drivers:
     install: false
 
   updates: security
 
+  # ONLY packages that are in the ISO's pool. Offline, anything else makes apt
+  # exit 100 and aborts the whole install (avahi-daemon did). Network-only
+  # packages are installed by late-commands below (best effort) and again by
+  # prepare-host.sh.
   packages:
     - curl
     - jq
     - git
-    - avahi-daemon   # mDNS: reachable as k0s-gpu-01.local with no router config
+    - wpasupplicant   # without it there is no Wi-Fi after first boot
 
+  # Run with `sh -c`. The sudoers lines come FIRST and must succeed: k0sctl
+  # and the VM bootstrap need passwordless sudo. Everything after them is a
+  # safety net for an offline install and may fail (`|| true`).
   late-commands:
-    # k0sctl connects over SSH and needs passwordless sudo.
     - echo 'ops ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/90-ops
     - chmod 0440 /target/etc/sudoers.d/90-ops
+    # Wi-Fi and SSH from the ISO pool if the package step didn't get them
+    # (openssh-s*-server matches openssh-server and openssh-sftp-server).
+    - |
+      for want in "wpasupplicant:p/pcsc-lite/libpcsclite1_ w/wpa/wpasupplicant_" \
+                  "openssh-server:o/openssh/openssh-s*-server_"; do
+        pkg=${want%%:*}
+        curtin in-target -- dpkg -s "$pkg" >/dev/null 2>&1 && continue
+        mkdir -p /target/tmp/iso-debs
+        for p in ${want#*:}; do cp /cdrom/pool/main/$p*.deb /target/tmp/iso-debs/; done
+        curtin in-target -- sh -c 'dpkg -i /tmp/iso-debs/*.deb'
+        rm -rf /target/tmp/iso-debs
+      done
+      curtin in-target -- systemctl enable ssh
+      true
+    # An offline install leaves apt pointing only at file:/cdrom. Write the
+    # real archive sources so `apt update` works on first boot.
+    - |
+      cat > /target/etc/apt/sources.list.d/ubuntu.sources <<'EOF'
+      Types: deb
+      URIs: http://archive.ubuntu.com/ubuntu/
+      Suites: noble noble-updates noble-backports
+      Components: main restricted universe multiverse
+      Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+      Types: deb
+      URIs: http://security.ubuntu.com/ubuntu/
+      Suites: noble-security
+      Components: main restricted universe multiverse
+      Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+      EOF
+    # Online installs get mDNS and ssh-import-id now; offline ones get them
+    # from prepare-host.sh.
+    - curtin in-target -- apt-get install -y avahi-daemon ssh-import-id || true

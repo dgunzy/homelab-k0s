@@ -7,8 +7,13 @@
   1. Verifies the ISO against Ubuntu's SHA256SUMS.
   2. Checks that the target drive letter is a USB disk (refuses anything else).
   3. Prompts for the Wi-Fi password and Linux login password (never stored in git).
-  4. Pulls your SSH public keys from https://github.com/<user>.keys.
+  4. Pulls ALL your SSH public keys from https://github.com/<user>.keys
+     (add every device's key to GitHub before building the stick).
   5. Wipes the USB volume, extracts the ISO onto it, and writes /autoinstall.yaml.
+
+  The drive letter names one FAT32 volume, not the whole disk: on a stick with
+  a second data partition, only the first (FAT32) partition is rewritten, and
+  the installer files live there.
 
   Run it yourself in a normal PowerShell window (it needs to prompt you):
     cd ~\homelab-k0s
@@ -43,6 +48,26 @@ function YamlDq([string]$s) { $s.Replace('\', '\\').Replace('"', '\"') }
 function Plain([Security.SecureString]$s) {
   $p = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)
   try { [Runtime.InteropServices.Marshal]::PtrToStringBSTR($p) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }
+}
+# SHA-512 crypt hash via `openssl passwd -6 -stdin`, fed exactly "<pw>\n" as
+# UTF-8. Do NOT pipe a string into openssl: Windows PowerShell 5.1 appends
+# CRLF (and re-encodes as ASCII), openssl strips only the LF, and the hash is
+# then of "<pw>`r". That is why the first install's console login failed.
+# Not on argv either, where other processes could read it.
+function Get-Sha512Crypt([string]$Password, [string]$Salt) {
+  $argList = if ($Salt) { "passwd -6 -salt $Salt -stdin" } else { 'passwd -6 -stdin' }
+  $psi = New-Object Diagnostics.ProcessStartInfo($openssl, $argList)
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardInput = $true
+  $psi.RedirectStandardOutput = $true
+  $p = [Diagnostics.Process]::Start($psi)
+  $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Password + "`n")
+  $p.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+  $p.StandardInput.Close()
+  $out = $p.StandardOutput.ReadToEnd()
+  $p.WaitForExit()
+  if ($p.ExitCode -ne 0) { Fail "openssl passwd exited with $($p.ExitCode)" }
+  $out.Trim()
 }
 
 # --- Preconditions ------------------------------------------------------------
@@ -86,8 +111,13 @@ if ($LinuxPassword) {
 }
 if ($pw1 -ne $pw2) { Fail 'Passwords do not match.' }
 if ($pw1.Length -lt 8) { Fail 'Use at least 8 characters.' }
-$hash = ($pw1 | & $openssl passwd -6 -stdin).Trim()
-if ($hash -notmatch '^\$6\$') { Fail 'Failed to generate password hash.' }
+if ($pw1 -match '[\x00-\x1f\x7f]') { Fail 'Password contains a control character (newline/tab?). Retype it.' }
+$hash = Get-Sha512Crypt $pw1
+if ($hash -notmatch '^\$6\$([^$]+)\$') { Fail 'Failed to generate password hash.' }
+# Self-check: re-hash with the same salt and compare.
+if ((Get-Sha512Crypt $pw1 $Matches[1]) -ne $hash) { Fail 'Password hash did not verify. Not writing the stick.' }
+Write-Host "    Password hash OK (salt $($Matches[1])). To double-check on Linux:"
+Write-Host "      openssl passwd -6 -salt '$($Matches[1])'   # type the password; output must equal the hash on the stick"
 $pw1 = $pw2 = $null
 
 $yaml = (Get-Content $template -Raw) -replace "`r`n", "`n"
@@ -136,4 +166,5 @@ try { Set-Volume -DriveLetter $UsbDriveLetter -NewFileSystemLabel 'UBUNTU2404' -
 
 Write-Host ''
 Write-Host "Done. ${UsbDriveLetter}: is ready. Next: README.md -> 'Install'." -ForegroundColor Green
+Write-Host "Use a REAR motherboard USB port: the desk hub failed to enumerate the stick."
 Write-Host "Note: the stick now holds your Wi-Fi password in plain text. Wipe it after installing."
