@@ -1,0 +1,80 @@
+# Ubuntu Server 24.04 autoinstall for k0s-gpu-01
+#
+# This is a TEMPLATE. bootstrap/install/build-usb.ps1 fills in the
+# double-underscore placeholders (Wi-Fi credentials, password hash, SSH keys) and writes the result to the
+# root of the USB stick as /autoinstall.yaml. Secrets never land in git.
+#
+# Safety: because 'autoinstall' is NOT on the kernel command line, the
+# installer stops and asks "Continue with autoinstall?" before touching disks.
+#
+# Hardware: ASUS TUF B360M-PLUS GAMING S, i7-8700, 16 GB, RTX 2070
+# Target disk: ADATA SU650 240 GB SSD (the ONLY disk Linux may touch)
+#   - Windows lives on the WD 1 TB SSD; the WD 1 TB HDD is left alone.
+
+autoinstall:
+  version: 1
+
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: America/New_York
+
+  identity:
+    hostname: k0s-gpu-01
+    username: ops
+    realname: ops
+    password: "__PASSWORD_HASH__"
+
+  # Install ONLY to the ADATA SU650. If no disk matches, the install fails
+  # rather than falling back to another disk. The layout creates its own
+  # EFI system partition on this disk, so Windows' ESP is never modified.
+  storage:
+    layout:
+      name: lvm
+      sizing-policy: all
+      match:
+        model: "*SU650*"
+    swap:
+      size: 0   # kubelet wants swap off
+
+  network:
+    version: 2
+    ethernets:
+      wired:
+        match:
+          macaddress: "0c:9d:92:bc:13:5b"   # Intel I219-V (unplugged today)
+        dhcp4: true
+        optional: true
+    wifis:
+      wifi:
+        match:
+          macaddress: "1c:1b:b5:34:c4:5c"   # Intel Wireless-AC 9461
+        dhcp4: true
+        access-points:
+          "__WIFI_SSID__":
+            password: "__WIFI_PASSWORD__"
+
+  ssh:
+    install-server: true
+    allow-pw: false
+    authorized-keys:
+__SSH_AUTHORIZED_KEYS__
+
+  # The NVIDIA driver is deliberately NOT installed here: `drivers: install`
+  # picks whatever ubuntu-drivers recommends that day (unpinned). The pinned
+  # driver branch is installed by bootstrap/host/prepare-host.sh instead.
+  drivers:
+    install: false
+
+  updates: security
+
+  packages:
+    - curl
+    - jq
+    - git
+    - avahi-daemon   # mDNS: reachable as k0s-gpu-01.local with no router config
+
+  late-commands:
+    # k0sctl connects over SSH and needs passwordless sudo.
+    - echo 'ops ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/90-ops
+    - chmod 0440 /target/etc/sudoers.d/90-ops

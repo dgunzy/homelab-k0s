@@ -1,0 +1,6 @@
+# Never commit rendered installer configs or secrets
+*.rendered.yaml
+*.local.*
+secrets/
+*.iso
+kubeconfig*
