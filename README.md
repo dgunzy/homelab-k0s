@@ -22,12 +22,20 @@ bootstrap/
     reboot-to-windows.sh    one-shot boot into Windows
   node/                     inside VMs
     prepare-gpu-node.sh     pinned NVIDIA driver for the GPU worker VM
+  cluster/                  the management cluster (run on the host)
+    mgmt.env                node, image and k0s settings for banlieue's bootstrap script
+    bootstrap-mgmt.sh       node -> flux -> provider
+clusters/homelab/           Flux entry point: FluxInstance, add-on Kustomizations
+infrastructure/             vendored release manifests: cert-manager, cluster-api, k0smotron, banlieue, hosts
+hack/vendor.sh              add-on version pins; re-vendors infrastructure/ and schemas/
+schemas/                    JSON schemas for banlieue CRDs (not in the flux-schema catalog yet)
+.github/workflows/          validate (flux-schema, shellcheck), publish (signed OCI artifact)
 docs/                       what I learned and why it's set up this way
 ```
 
-Later: the management cluster bootstrap, `clusters/homelab/` (Flux Operator),
-`infrastructure/` (banlieue, Cluster API, GPU Operator, monitoring),
-`apps/` (inference, sandboxes). See [CLAUDE.md](CLAUDE.md) for the roadmap.
+Later: `apps/` (inference, sandboxes), GPU Operator and monitoring under
+`infrastructure/`. See [CLAUDE.md](CLAUDE.md) for the roadmap and
+[docs/03](docs/03-gitops.md) for the GitOps design.
 
 ## Hardware: k0s-gpu-01
 
@@ -87,7 +95,7 @@ git clone https://github.com/<github-user>/homelab-k0s && cd homelab-k0s
 sudo ./bootstrap/host/prepare-host.sh   # VFIO, br-lab, banlieue CH host, k0sctl, tailscale, GRUB
 sudo reboot
 sudo ./bootstrap/host/prepare-host.sh   # again: verifies all four GPU functions are on vfio-pci
-sudo tailscale up --advertise-routes=10.42.0.0/24   # once; approve the route in the admin console
+sudo tailscale up --advertise-routes=10.42.0.0/24 --accept-dns=false   # once; approve the route in the admin console
 ```
 
 After this the host is headless (the 2070 belongs to VFIO) and runs no NVIDIA driver.
@@ -103,7 +111,25 @@ sudo ./bootstrap/host/gpu-smoke-vm.sh destroy  # when done
 From the MacBook (over Tailscale, or through the host):
 `ssh -J ops@k0s-gpu-01.local ubuntu@10.42.0.10`.
 
-Next: the management cluster ([docs/02, phase 2](docs/02-virtualized-gpu-cluster.md#phases)).
+## 6. Management cluster
+
+One-time, before the `flux` step: push to `main` so CI publishes
+`ghcr.io/dgunzy/homelab-k0s-manifests`, then make that package **public**
+(GitHub → Packages → Package settings → Change visibility).
+
+```bash
+./bootstrap/cluster/bootstrap-mgmt.sh node       # mgmt-01 (10.42.0.11): CH VM + k0s
+./bootstrap/cluster/bootstrap-mgmt.sh flux       # Flux Operator + FluxInstance; Flux takes over from here
+./bootstrap/cluster/bootstrap-mgmt.sh provider   # this host's banlieue provider joins the cluster
+./bootstrap/cluster/bootstrap-mgmt.sh status
+```
+
+From the MacBook (over Tailscale):
+`scp ops@k0s-gpu-01.local:.kube/homelab-mgmt.kubeconfig ~/.kube/` then
+`KUBECONFIG=~/.kube/homelab-mgmt.kubeconfig kubectl get nodes`.
+
+Validate manifests before pushing: `flux schema validate --config .fluxschema.yml clusters/homelab`
+(`flux plugin install schema` once).
 
 ## Switching between Linux and Windows
 
@@ -129,4 +155,11 @@ macOS resolves `.local` names out of the box (Bonjour).
 | Tailscale | 1.104.7, apt-held | `prepare-host.sh` |
 | Ubuntu cloud image (VMs) | noble `release-20261017` (SHA256 pinned) | `gpu-smoke-vm.sh` |
 | NVIDIA driver (in the GPU VM) | R580 `server-open` (LTSB), apt-held | `prepare-gpu-node.sh` |
-| k0s | *phase 2* | |
+| kubectl (host) | v1.35.10 (SHA256 pinned) | `prepare-host.sh` |
+| k0s | v1.35.10+k0s.0 | `bootstrap/cluster/mgmt.env` |
+| banlieue bootstrap script | v0.5.7 (SHA256 pinned) | `bootstrap-mgmt.sh` |
+| cert-manager | v1.21.3 | `hack/vendor.sh` |
+| Cluster API | v1.14.4 | `hack/vendor.sh` |
+| k0smotron | v2.3.1 | `hack/vendor.sh` |
+| banlieue (in cluster) | v0.5.7 (SHA256 pinned) | `hack/vendor.sh` |
+| Flux, Flux Operator | **latest** 2.x / latest, by choice (test cluster) | `flux-instance.yaml`, `flux-operator.yaml` |

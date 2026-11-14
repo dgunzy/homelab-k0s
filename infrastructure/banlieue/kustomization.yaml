@@ -1,0 +1,9 @@
+# banlieue: CRDs, controller, operator and ProviderClasses, from the release's
+# infrastructure-components.yaml (hack/vendor.sh). The same objects
+# `banlieue bootstrap operator` applies, and what clusterctl installs for the
+# `banlieue` InfrastructureProvider. It carries literal ${FQDN}/${VM_NAME}
+# templates, so its Flux Kustomization must NOT enable postBuild substitution.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - infrastructure-components.yaml

@@ -1,0 +1,6 @@
+# cert-manager, from its release manifest (hack/vendor.sh). Cluster API and
+# its providers need it for their webhook serving certificates.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cert-manager.yaml

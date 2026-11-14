@@ -1,0 +1,35 @@
+# The Flux Operator updates itself from the same signed distribution
+# artifact the FluxInstance uses, as a raw manifest (no Helm). The bootstrap
+# applied this exact install.yaml once; from here Flux owns it.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests
+  ref:
+    tag: latest
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: ^https://token\.actions\.githubusercontent\.com$
+        subject: ^https://github\.com/controlplaneio-fluxcd/.*$
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  sourceRef:
+    kind: OCIRepository
+    name: flux-operator
+  path: ./flux-operator
+  # Never prune: a bad artifact must not be able to delete the operator and,
+  # with it, the CRDs everything else hangs off.
+  prune: false
+  wait: true
+  timeout: 5m

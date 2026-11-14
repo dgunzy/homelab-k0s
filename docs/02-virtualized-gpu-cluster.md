@@ -22,15 +22,25 @@ k0s-gpu-01 (bare metal Ubuntu 24.04, i7-8700 6c/12t, 16 GB, Wi-Fi only)
 │  banlieue CH provider (systemd; a Provider in the mgmt cluster)
 │  br-lab 10.42.0.1/24: DHCP + DNS + NAT out of wlo1; tailscale subnet route
 │
-├── mgmt-01   VM  2 vCPU / 4.5 GB   k0s management cluster
-│                                   Flux, Cluster API, k0smotron, banlieue, monitoring
-│                                   └── control plane of the "gpu" cluster runs here as pods
-└── gpu-01    VM  4 vCPU / 7 GB     worker of the "gpu" cluster; RTX 2070 via VFIO
-                                    NVIDIA R580 in the guest, GPU Operator, time-slicing
+├── mgmt-01   VM  2 vCPU / 4.5 GB   tiny management cluster (k0s 1.35, built by bootstrap-mgmt.sh)
+│                                   Flux, Cluster API, k0smotron, banlieue
+│                                   └── control plane of the "workload" cluster runs here as pods
+│
+│   "workload" cluster: k0smotron-hosted control plane (k0s 1.36+), workers from
+│   Cluster API MachineDeployments backed by banlieue CloudHypervisorMachines
+├── gpu-01    VM  4 vCPU / ~5.5 GB  node pool "gpu": RTX 2070 via VFIO, tainted for GPU work
+│                                   NVIDIA R580, GPU Operator, inference server
+└── cpu-01    VM  2 vCPU / ~4 GB    node pool "cpu": Agent Substrate (gVisor actors),
+                                    its Postgres + object store, cluster add-ons
 ```
 
-About 2 GB stays free for the host and one small sandbox VM. A RAM upgrade
-(below) is what makes more VMs possible.
+Two clusters, on purpose: a tiny management cluster that only provisions
+and reconciles, and one child cluster that does all the work, inference and
+agents side by side in separate node pools. Agents reach the inference
+server through Substrate's egress gateway (credentials and policy stay
+outside the sandbox). Only gpu-01's RAM is pinned; the other VMs allocate
+lazily, which is what makes this fit in 16 GB. The RAM upgrade (below) buys
+headroom, not a different design.
 
 ## Decisions and why
 
@@ -127,19 +137,32 @@ The host routes instead:
 
 ### A hosted control plane (phase 2)
 
-The `gpu` cluster's control plane runs as pods in the management cluster
+The `workload` cluster's control plane runs as pods in the management cluster
 (k0smotron), not on controller VMs. That saves a VM's RAM, and it's the
 hosted control-plane model managed Kubernetes services use. Workers come
-from a CAPI `MachineDeployment` backed by banlieue `CloudHypervisorMachine`s.
+from CAPI `MachineDeployment`s (one per node pool: `gpu`, `cpu`) backed by
+banlieue `CloudHypervisorMachine`s.
+
+Its Kubernetes version and API feature gates are set in its own
+`K0smotronControlPlane`, independent of mgmt. Agent Substrate needs 1.36+
+plus `ClusterTrustBundle`, `ClusterTrustBundleProjection`,
+`PodCertificateRequest` and `certificates.k8s.io/v1beta1`; mgmt can stay on
+1.35 and is upgraded on its own schedule.
 
 ### Memory budget (16 GB)
 
 | | RAM | Notes |
 |---|---|---|
 | host | ~2 GB | systemd, provider, tailscale, page cache |
-| mgmt-01 | 4.5 GB | mgmt k0s + hosted control plane + Flux/CAPI/banlieue + light monitoring |
-| gpu-01 | 7 GB | pinned (VFIO); enough to page a 7B Q4 model into VRAM |
-| banlieue guests | ≤2 GB | `banlieue-guests.slice` ceiling, `--guest-memory-max 2G` |
+| mgmt-01 | 4.5 GB (lazy) | mgmt k0s + workload control plane pods + Flux/CAPI/banlieue (measured 1.8 GB used before the child cluster) |
+| gpu-01 | ~5.5 GB (pinned) | VFIO pins all of it. llama.cpp with every layer offloaded keeps the model in VRAM; host RAM is only for loading |
+| cpu-01 | ~4 GB (lazy) | Substrate control plane, 1–2 gVisor workers with 256–512 MB actors, Postgres, object store |
+| banlieue guests | ≤2 GB | `banlieue-guests.slice` ceiling, `--guest-memory-max 2G`; test VMs only |
+
+Ways to stay inside it: monitoring as DCGM exporter + a single-binary
+metrics store rather than kube-prometheus-stack; Substrate without its
+OTel collector at first; scale the `gpu` MachineDeployment to 0 when not
+doing inference (scale-to-zero GPU pools are a normal cost control).
 
 **RAM upgrade.** Current: 2× 8 GB DDR4-2666 in `ChannelA-DIMM2` and
 `ChannelB-DIMM2`; `DIMM1` in both channels is empty. Adding a matched
@@ -212,10 +235,30 @@ Each phase has an exit check. Don't start the next phase until it passes.
    Cluster API and k0smotron as Flux-managed add-ons. Connect this host's
    provider (`banlieue bootstrap cloud-hypervisor-host`).
    *Exit:* the host's `Provider` reports capacity, and a test `VirtualMachine` boots.
-3. **GPU worker through Cluster API.** Needs GPU passthrough in banlieue
-   (see "Gaps" below). gpu-01 becomes a `MachineDeployment` of one, joined
-   to the k0smotron-hosted `gpu` cluster. GPU Operator with
-   `driver.enabled=false` first, then try its containerized driver.
+   *Progress (2026-11-14):* `bootstrap-mgmt.sh node` built mgmt-01 (CH VM,
+   Ubuntu 24.04, 10.42.0.11) and k0s v1.35.10 came up Ready in about a
+   minute of k0sctl time. The GitOps side is in [docs/03](03-gitops.md).
+   Lesson: Tailscale's MagicDNS (`accept-dns`, on by default) became the
+   host's default DNS route and broke name resolution intermittently, for the
+   VMs too; a subnet-router host runs with `--accept-dns=false`.
+   `bootstrap-mgmt.sh flux` then brought up Flux v2.10.0 and all add-ons
+   (cert-manager, Cluster API, k0smotron, banlieue) in ~90 s, with cosign
+   verification on both OCI sources. `provider` connected this host:
+   `Provider/k0s-gpu-01` Ready, heartbeat Alive, reporting 12 CPUs,
+   15909 MiB, Cloud Hypervisor v53.0. Still open for the exit check: a test
+   `VirtualMachine`.
+   Two gotchas: `kubectl get provider` resolves to Cluster API's clusterctl
+   inventory kind (`providers.clusterctl.cluster.x-k8s.io`), so banlieue's
+   must be `providers.banlieue.io`; and the provider reports
+   `storageWithoutReflink: default`: the root LV is ext4, so each VM disk is
+   a full copy of its image instead of a copy-on-write clone (banlieue ships
+   `scripts/ch-storage-to-xfs.sh` for an XFS storage class).
+3. **The workload cluster.** A k0smotron-hosted control plane (k0s 1.36+
+   with Substrate's feature gates) and a `cpu` MachineDeployment of one
+   (cpu-01) through banlieue. Then the `gpu` pool: needs GPU passthrough in
+   banlieue (see "Gaps" below); gpu-01 becomes a `MachineDeployment` of one.
+   GPU Operator with `driver.enabled=false` first, then try its
+   containerized driver.
    *Exit:* the CUDA sample pod passes on a node CAPI created, and deleting
    the Machine brings back a working replacement.
 4. **Node image pipeline.** A GPU node image with the driver baked in
@@ -227,8 +270,13 @@ Each phase has an exit check. Don't start the next phase until it passes.
    watch detection → cordon → drain → replace.
 6. **Scheduling.** Time-slicing vs MPS, Kueue and KAI Scheduler, DRA,
    Slurm on Kubernetes (Slinky).
-7. **Workloads.** Inference (Ollama/llama.cpp, then vLLM) and agent
-   sandboxes as banlieue `VirtualMachinePool`s.
+7. **Workloads.** Inference on the `gpu` pool (llama.cpp first, then vLLM;
+   Turing: fp16/quantized, no FlashAttention 2) and Agent Substrate on the
+   `cpu` pool in gVisor mode (its `microvm` class needs `/dev/kvm`, i.e.
+   nested virtualization, which these VMs don't have; Substrate can't hand
+   GPUs to actors yet anyway). Agents call inference through Substrate's
+   egress gateway. Optionally compare with banlieue `VirtualMachinePool`
+   sandboxes (a full VM per agent).
 
 ## Gaps in banlieue (upstream contributions)
 

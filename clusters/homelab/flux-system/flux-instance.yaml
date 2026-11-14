@@ -1,0 +1,56 @@
+# The Flux installation for this cluster, managed by the Flux Operator.
+# bootstrap/cluster/bootstrap-mgmt.sh applies it once; after that Flux syncs
+# this file from the OCI artifact like everything else, so changes go through
+# git (CI -> ghcr.io -> cluster).
+apiVersion: fluxcd.controlplane.io/v1
+kind: FluxInstance
+metadata:
+  name: flux
+  namespace: flux-system
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: "1h"
+    # How often the operator checks the distribution artifact for a new Flux
+    # release. With version "2.x" below, new minors and patches roll out on
+    # their own: this is a test cluster, staying current is the point.
+    fluxcd.controlplane.io/reconcileArtifactEvery: "10m"
+    fluxcd.controlplane.io/reconcileTimeout: "5m"
+spec:
+  distribution:
+    version: "2.x"
+    registry: ghcr.io/fluxcd
+    artifact: oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests
+  # No helm-controller: every add-on is a raw release manifest (hack/vendor.sh).
+  components:
+    - source-controller
+    - kustomize-controller
+    - notification-controller
+  cluster:
+    type: kubernetes
+    size: small
+    multitenant: false
+    networkPolicy: true
+    domain: cluster.local
+  # Gitless GitOps: CI pushes this repo as a signed OCI artifact
+  # (.github/workflows/publish.yaml) and Flux pulls it from GHCR.
+  sync:
+    kind: OCIRepository
+    url: oci://ghcr.io/dgunzy/homelab-k0s-manifests
+    ref: latest
+    path: clusters/homelab
+    interval: 1m
+  kustomize:
+    patches:
+      # Only apply artifacts that main's publish workflow signed (cosign
+      # keyless, GitHub OIDC). The sync OCIRepository is named after the
+      # namespace.
+      - target:
+          kind: OCIRepository
+          name: flux-system
+        patch: |
+          - op: add
+            path: /spec/verify
+            value:
+              provider: cosign
+              matchOIDCIdentity:
+                - issuer: ^https://token\.actions\.githubusercontent\.com$
+                  subject: ^https://github\.com/dgunzy/homelab-k0s/\.github/workflows/publish\.yaml@refs/heads/main$

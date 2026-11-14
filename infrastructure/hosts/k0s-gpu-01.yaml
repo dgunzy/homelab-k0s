@@ -1,0 +1,30 @@
+# This desktop as a banlieue Provider: one Cloud Hypervisor host, one failure
+# domain (banlieue ADR-0060). The process behind it runs on the host itself
+# (banlieue-provider-cloud-hypervisor.service), with a ServiceAccount token
+# issued by `bootstrap/cluster/bootstrap-mgmt.sh provider`.
+#
+# Classes map abstract names (what VMClasses ask for) to what the host
+# declared at install time (`banlieue host cloud-hypervisor install
+# --storage-class default=... --network-class default=br-lab`).
+apiVersion: banlieue.io/v1alpha1
+kind: Provider
+metadata:
+  name: k0s-gpu-01
+  namespace: banlieue-system
+  labels:
+    homelab/host: k0s-gpu-01
+    homelab/gpu: rtx-2070
+spec:
+  providerClassRef:
+    name: cloud-hypervisor
+  connection:
+    endpoint: ch://k0s-gpu-01
+  capabilities:
+    storageClasses:
+      - name: standard
+        target:
+          hostClass: default        # /var/lib/banlieue/ch on the root SSD
+    networkClasses:
+      - name: lab
+        target:
+          hostClass: default        # br-lab, 10.42.0.0/24, NAT out of Wi-Fi

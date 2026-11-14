@@ -1,0 +1,8 @@
+# Cluster API core (CRDs + controller), from its release core-components.yaml
+# (hack/vendor.sh). This is what `clusterctl init` would apply; Flux applies
+# it instead and resolves its ${VAR:=default} placeholders with postBuild
+# substitution (clusters/homelab/infrastructure.yaml).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - core-components.yaml

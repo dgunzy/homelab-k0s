@@ -1,0 +1,61 @@
+# Publish the cluster's desired state as an OCI artifact, signed with cosign
+# keyless (GitHub OIDC). The cluster's FluxInstance syncs
+# oci://ghcr.io/dgunzy/homelab-k0s-manifests:latest and refuses any artifact
+# not signed by THIS workflow on main (clusters/homelab/flux-system/flux-instance.yaml).
+#
+# Only after validation passes on the same commit: a broken manifest never
+# becomes `latest`.
+name: publish
+
+on:
+  workflow_run:
+    workflows: [validate]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # push to ghcr.io
+  id-token: write   # cosign keyless signing
+
+env:
+  ARTIFACT: oci://ghcr.io/${{ github.repository_owner }}/homelab-k0s-manifests
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The commit validate ran on, not whatever main is now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@v2.10.0
+      - name: Setup cosign
+        uses: sigstore/cosign-installer@v4.1.3
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push, sign, tag latest
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          tag="$(git rev-parse --short HEAD)"
+          # Only what Flux applies: no host bootstrap, docs or CI config.
+          flux push artifact "${ARTIFACT}:${tag}" \
+            --path=. \
+            --source="${{ github.server_url }}/${{ github.repository }}" \
+            --revision="main@sha1:${sha}" \
+            --add-ignore-paths="bootstrap/,docs/,hack/,schemas/,.github/,*.md" \
+            --output=json | tee push.json
+          ref="$(jq -r '.repository + "@" + .digest' push.json)"
+          # Sign the digest BEFORE it becomes `latest`, so the cluster never
+          # sees an unsigned latest.
+          cosign sign --yes "${ref#oci://}"
+          flux tag artifact "${ARTIFACT}:${tag}" --tag latest

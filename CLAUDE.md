@@ -30,8 +30,13 @@ declarative, reproducible, versioned. Design and reasons: `docs/02-virtualized-g
   partition, or boot entries without asking me first and showing the exact command.
 - Anything destructive (disks, `k0s reset`, deleting VMs/PVs/namespaces) needs explicit confirmation.
 - Scripts must be idempotent and safe to re-run. Use `set -euo pipefail` in bash.
-- Pin versions (OS image, cloud images, NVIDIA driver branch, k0s, banlieue, Helm charts, images,
-  Flux) with checksums where a download is involved. No `latest`.
+- Pin versions (OS image, cloud images, NVIDIA driver branch, k0s, banlieue, add-on manifests,
+  images) with checksums where a download is involved. No `latest`. **One deliberate exception:**
+  Flux itself (`FluxInstance` `distribution.version: "2.x"`) and the Flux Operator follow the
+  latest release from their signed distribution artifact. It's a test cluster; I chose this.
+- **No Helm / HelmReleases.** Add-ons are their projects' raw release manifests, vendored by
+  `hack/vendor.sh` at pinned versions, applied by Flux Kustomizations. No CAPI Operator or
+  clusterctl either: Flux `postBuild` substitution resolves clusterctl `${VAR:=default}` placeholders.
 - No secrets in git. Plan is SOPS + age once Flux is in place.
 - Don't execute scripts from downloaded third-party repos to explore them; read them.
 
@@ -42,12 +47,27 @@ bootstrap/        everything before Flux
   install/        OS install: autoinstall templates + USB builder (run from Windows)
   host/           hypervisor host prep + GPU smoke VM (run on the host)
   node/           in-VM prep (GPU worker driver)
-  cluster/        management cluster bootstrap (banlieue bootstrap script, pinned) (added later)
-clusters/homelab/ Flux entry point (added later)
-infrastructure/   cluster add-ons: banlieue, cluster-api, k0smotron, gpu-operator, monitoring, kueue
-apps/             workloads: inference servers, agent sandboxes
+  cluster/        management cluster: mgmt.env + bootstrap-mgmt.sh (wraps banlieue's pinned script)
+clusters/homelab/ Flux entry point: FluxInstance, flux-operator self-update, add-on Kustomizations
+infrastructure/   vendored add-on manifests, one dir each: cert-manager, cluster-api, k0smotron,
+                  banlieue, hosts (banlieue Providers); later gpu-operator, monitoring, kueue
+apps/             workloads: inference servers, agent sandboxes (added later)
+hack/vendor.sh    pins + re-vendoring of infrastructure/ and schemas/
+schemas/          JSON schemas for CRDs missing from the flux-schema catalog (banlieue)
+.github/workflows validate (flux-schema + shellcheck), publish (signed OCI artifact)
 docs/             notes on what I learned and why things are set up this way
 ```
+
+## GitOps (docs/03)
+
+- Gitless: CI pushes the repo as an OCI artifact `ghcr.io/dgunzy/homelab-k0s-manifests`
+  (`:<short-sha>` and `:latest`), signed with cosign keyless; the FluxInstance verifies the
+  signature (identity: `publish.yaml` on `main`) and syncs `clusters/homelab`.
+- Validate locally before pushing: `flux schema validate --config .fluxschema.yml <dir>` for
+  `clusters/homelab` and each `infrastructure/*` dir. CI runs the same via the flux-schema action.
+- To bump an add-on: change its pin in `hack/vendor.sh`, run it, review the diff. banlieue's
+  version also lives in `prepare-host.sh` and `bootstrap-mgmt.sh`; keep the three in step.
+- Never enable `postBuild` substitution on banlieue's Kustomization (literal `${FQDN}` templates).
 
 ## Virtualization (banlieue + Cloud Hypervisor)
 
@@ -68,7 +88,9 @@ docs/             notes on what I learned and why things are set up this way
 - `br-lab` (systemd-networkd, files in `/etc/systemd/network/`): host `10.42.0.1/24`, DHCP
   `.100–.199`, NAT out of `wlo1`, DNS from the host's resolved on `10.42.0.1`.
 - k0s nodes get fixed MACs and static addresses below `.100`. The smoke VM is `10.42.0.10`.
-- The host is a Tailscale subnet router for `10.42.0.0/24` (the router can't hold static routes).
+- The host is a Tailscale subnet router for `10.42.0.0/24` (the router can't hold static routes),
+  with `--accept-dns=false`: MagicDNS as the host's DNS made resolution flaky for host and VMs.
+- The management node `mgmt-01` is `10.42.0.11` (static DHCP lease by MAC, set by bootstrap-mgmt.sh).
 - A Wi-Fi interface can't be bridged; don't try to put VMs on the home LAN.
 
 ## k0s specifics (easy to get wrong)
@@ -111,13 +133,16 @@ docs/             notes on what I learned and why things are set up this way
 1. ~~Hypervisor host + GPU passthrough proven with the smoke VM~~ (done 2026-11-14)
 2. Management cluster (one CH VM) + Flux via **Flux Operator** (`FluxInstance`, not
    `flux bootstrap`); banlieue, Cluster API, k0smotron as add-ons under `infrastructure/`
-3. GPU worker via Cluster API (needs GPU passthrough in banlieue: contribute upstream);
-   GPU Operator, CUDA test pod passing
+3. One child cluster, `workload` (k0smotron-hosted control plane, k0s 1.36+ with Substrate's
+   feature gates), node pools `cpu` (cpu-01) and `gpu` (gpu-01, needs GPU passthrough in
+   banlieue: contribute upstream); GPU Operator, CUDA test pod passing. mgmt stays tiny.
 4. Node image pipeline: driver baked in, signed, SBOM, CVE gate, rolling image upgrades
 5. DCGM exporter + Prometheus/Grafana; health and remediation (NVSentinel vs. my own controller
    in Rust or Go), MachineHealthCheck, fault injection
 6. Scheduling: time-slicing vs MPS, Kueue, KAI Scheduler, DRA; Slurm on Kubernetes (Slinky)
-7. Inference servers and agent sandboxes (banlieue `VirtualMachinePool`) under `apps/`
+7. In the `workload` cluster: inference server on the `gpu` pool; Agent Substrate (CNCF, gVisor
+   mode; no KVM in our VMs, no GPUs for actors yet) on the `cpu` pool; agents reach inference
+   through Substrate's egress gateway
 8. bindy for lab DNS once there are LoadBalancer Services / Gateway routes to name
 
 ## How I like to work

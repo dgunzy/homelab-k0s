@@ -29,6 +29,9 @@ BANLIEUE_SHA256="996f5c3a46c5fab38de53c97de9c0ea432292f74376b3a29ebd96014d8b9774
 K0SCTL_VERSION="0.31.3"
 K0SCTL_SHA256="c055473be106deead180594f2610b8cca5fec97e69a710c92c1f26088bbd2255"
 TAILSCALE_VERSION="1.104.7"
+# Same minor as the cluster's k0s (bootstrap/cluster/mgmt.env).
+KUBECTL_VERSION="1.35.10"
+KUBECTL_SHA256="c49a28f1f4efc4d475ed05f47f2ce8e563bf7bef69ed77fe1b924ea6d83b6327"
 
 # The VM network. The host is the router: 10.42.0.1 on br-lab.
 LAB_BRIDGE="br-lab"
@@ -77,6 +80,30 @@ if (( ${#missing[@]} )); then
   log "Installing: ${missing[*]}"
   apt-get update
   apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+
+# --- sshd: Ubuntu's default config ------------------------------------------
+# After the first (offline) install, /etc/ssh/sshd_config held only the
+# installer's "PasswordAuthentication no": openssh-server arrived later by
+# hand, and dpkg keeps an existing conffile. Without the packaged default
+# there is no Include (drop-ins ignored), no sftp Subsystem (scp fails with
+# "subsystem request failed") and no UsePAM. Restore it and keep the
+# keys-only policy as a drop-in.
+if ! grep -q '^Include /etc/ssh/sshd_config.d/' /etc/ssh/sshd_config; then
+  log "Restoring Ubuntu's default sshd_config (keys only via sshd_config.d)"
+  cp -a /etc/ssh/sshd_config /etc/ssh/sshd_config.pre-homelab
+  install -m 0644 /usr/share/openssh/sshd_config /etc/ssh/sshd_config
+  SSHD_CHANGED=1
+fi
+SSHD_DROPIN=/etc/ssh/sshd_config.d/50-homelab.conf
+want_sshd=$'# homelab-k0s: keys only (also set by the autoinstall)\nPasswordAuthentication no\nKbdInteractiveAuthentication no'
+if [[ "$(cat "$SSHD_DROPIN" 2>/dev/null)" != "$want_sshd" ]]; then
+  printf '%s\n' "$want_sshd" > "$SSHD_DROPIN"
+  SSHD_CHANGED=1
+fi
+if [[ "${SSHD_CHANGED:-0}" == 1 ]]; then
+  sshd -t                    # never reload a config that doesn't parse
+  systemctl reload ssh       # existing sessions survive a reload
 fi
 
 # --- No NVIDIA driver on the host ---------------------------------------------
@@ -257,6 +284,18 @@ if [[ "$(k0sctl version 2>/dev/null | awk '/^version:/{print $2}')" != "v$K0SCTL
   rm -rf "$tmp"
 fi
 
+# --- kubectl ------------------------------------------------------------------
+# The node bootstrap checks for it, and the cluster bootstrap applies the
+# Flux Operator and the FluxInstance with it.
+if [[ "$(kubectl version --client -o json 2>/dev/null | jq -r .clientVersion.gitVersion)" != "v$KUBECTL_VERSION" ]]; then
+  log "Installing kubectl $KUBECTL_VERSION"
+  tmp=$(mktemp -d)
+  curl -fsSLo "$tmp/kubectl" "https://dl.k8s.io/release/v$KUBECTL_VERSION/bin/linux/amd64/kubectl"
+  echo "$KUBECTL_SHA256  $tmp/kubectl" | sha256sum -c --quiet -
+  install -m 0755 "$tmp/kubectl" /usr/local/bin/kubectl
+  rm -rf "$tmp"
+fi
+
 # --- AppArmor: let swtpm keep vTPM state where banlieue puts it ---------------
 # Ubuntu confines swtpm to libvirt's paths (/var/lib/libvirt/swtpm, ...).
 # banlieue keeps vTPM state and its EK CA scratch under /var/lib/banlieue and
@@ -314,7 +353,13 @@ done
 log "$LAB_BRIDGE: $(ip -br addr show "$LAB_BRIDGE" | awk '{print $3}')"
 if ! tailscale status >/dev/null 2>&1; then
   log "Tailscale is not logged in. Once, interactively:"
-  log "  sudo tailscale up --advertise-routes=$LAB_CIDR"
+  log "  sudo tailscale up --advertise-routes=$LAB_CIDR --accept-dns=false"
   log "  then approve the route in the Tailscale admin console"
+elif [[ "$(tailscale debug prefs 2>/dev/null | jq -r .CorpDNS)" == true ]]; then
+  # MagicDNS would make tailscale0 the host's (and so the VMs') default DNS
+  # route; it made name resolution flaky here. A subnet router doesn't need
+  # tailnet names: keep the Wi-Fi network's DNS.
+  log "Tailscale: not taking over host DNS (--accept-dns=false)"
+  tailscale set --accept-dns=false
 fi
 log "Next: sudo ./bootstrap/host/gpu-smoke-vm.sh up"

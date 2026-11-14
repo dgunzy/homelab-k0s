@@ -1,0 +1,46 @@
+# Validate every manifest and kustomize overlay against its schema (Kubernetes,
+# Flux, the CNCF catalog, and banlieue's vendored schemas), including CEL
+# rules, before anything reaches main. Also lint the bootstrap scripts.
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Flux CLI with the schema plugin
+        uses: fluxcd/flux2/action@v2.10.0
+        with:
+          plugins: |
+            schema
+      # Reads .fluxschema.yml. Overlays (dirs with a kustomization.yaml) are
+      # built and validated as Flux's kustomize-controller would build them.
+      - name: Validate manifests
+        uses: fluxcd/flux-schema/actions/validate@v0.17.0
+        with:
+          path: "."
+          exclude: |
+            bootstrap
+            docs
+            hack
+            schemas
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: ShellCheck
+        run: |
+          shellcheck --version
+          find bootstrap hack -name '*.sh' -print0 | xargs -0 shellcheck -S warning

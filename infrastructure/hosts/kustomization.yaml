@@ -1,0 +1,5 @@
+# Hypervisor hosts, one banlieue Provider each. The R610 joins here later.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - k0s-gpu-01.yaml

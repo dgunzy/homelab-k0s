@@ -1,0 +1,13 @@
+# flux-schema validation config, shared by CI (.github/workflows/validate.yaml)
+# and local runs:  flux schema validate --config .fluxschema.yml <dir>
+apiVersion: schema.plugin.fluxcd.io/v1beta1
+kind: Config
+validate:
+  schemaLocation:
+    - default      # Kubernetes + Flux, built into the plugin
+    - ecosystem    # CNCF catalog: cert-manager, Cluster API, k0smotron, Flux Operator, ...
+    - ./schemas    # banlieue (not in the catalog yet): extracted by hack/vendor.sh
+  skipJSONPath:
+    - Secret:/sops
+  skipMissingSchemas: false
+  output: text

@@ -1,0 +1,9 @@
+# k0smotron's Cluster API bootstrap and control-plane providers (hack/vendor.sh).
+# The control-plane provider runs workload clusters' control planes as pods
+# in this management cluster (K0smotronControlPlane): a hosted control plane.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - bootstrap-components.yaml
+  - control-plane-components.yaml

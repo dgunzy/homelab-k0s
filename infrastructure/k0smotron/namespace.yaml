@@ -1,0 +1,8 @@
+# Declared once here: both k0smotron component files ship it, and kustomize
+# rejects the duplicate (hack/vendor.sh strips theirs).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k0smotron
+  labels:
+    control-plane: controller-manager

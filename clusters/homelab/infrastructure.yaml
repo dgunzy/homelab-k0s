@@ -1,0 +1,106 @@
+# Cluster add-ons, one Flux Kustomization per component, applied in
+# dependency order. Each points at a directory of vendored release manifests
+# (hack/vendor.sh) inside the same OCI artifact this cluster syncs from.
+#
+# wait: true makes a Kustomization Ready only once everything it applied is
+# healthy, so dependsOn really means "after it works", not "after it was sent".
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./infrastructure/cert-manager
+  prune: true
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-api
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: cert-manager
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./infrastructure/cluster-api
+  prune: true
+  wait: true
+  # core-components.yaml is a clusterctl template: ${VAR:=default}
+  # placeholders. Any postBuild turns on substitution, which resolves them to
+  # the same defaults clusterctl would. Overrides go here.
+  postBuild:
+    substitute:
+      HOMELAB_CLUSTER: homelab-mgmt
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: k0smotron
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: cluster-api
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./infrastructure/k0smotron
+  prune: true
+  wait: true
+  postBuild:
+    substitute:
+      HOMELAB_CLUSTER: homelab-mgmt
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: banlieue
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: cluster-api
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./infrastructure/banlieue
+  prune: true
+  wait: true
+  # No postBuild: banlieue ships literal ${FQDN}/${VM_NAME} templates that
+  # substitution would erase.
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hosts
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: banlieue
+  interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./infrastructure/hosts
+  prune: true
+  # Not wait: a Provider only turns Ready once the host's process connects,
+  # which is a manual step (bootstrap-mgmt.sh provider).
+  wait: false
