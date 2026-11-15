@@ -39,7 +39,6 @@
         },
         "ttlSeconds": {
           "description": "Hard lifetime in seconds, counted from binding rather than from\ncreation — a claim that waited ten minutes for capacity still gets\nits full TTL. Required, with no default: a claim without a deadline\nis a leaked VM, and the right value is a property of the workload.",
-          "format": "uint64",
           "minimum": 0,
           "type": "integer"
         }

@@ -54,7 +54,6 @@
               },
               "sizeGiB": {
                 "description": "Disk size in GiB. For the OS disk this is a floor — the template's disk\nis grown to at least this size.",
-                "format": "uint32",
                 "maximum": 65536,
                 "minimum": 1,
                 "type": "integer"
@@ -103,7 +102,6 @@
             "timeoutSeconds": {
               "default": 600,
               "description": "Seconds from the machine's power-on (its infrastructure `Ready`\ntransition) within which the guest must report every listed partition\nsealed; after that `GuestReady` is `False` with reason\n`FirstBootSealingTimeout`. A clone that cannot seal halts in its\ninitramfs and never reports anything, so this is how it is noticed.",
-              "format": "uint32",
               "maximum": 86400,
               "minimum": 60,
               "type": "integer"
@@ -118,7 +116,6 @@
         },
         "memoryMiB": {
           "description": "Memory in MiB.",
-          "format": "uint32",
           "maximum": 4194304,
           "minimum": 128,
           "type": "integer"
@@ -193,7 +190,6 @@
                         "type": "array"
                       },
                       "prefix": {
-                        "format": "uint8",
                         "maximum": 255,
                         "minimum": 0,
                         "type": "integer"
@@ -235,7 +231,6 @@
         },
         "numCpus": {
           "description": "Number of virtual CPUs.",
-          "format": "uint32",
           "maximum": 256,
           "minimum": 1,
           "type": "integer"

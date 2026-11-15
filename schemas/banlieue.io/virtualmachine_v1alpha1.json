@@ -40,7 +40,6 @@
           "properties": {
             "cpus": {
               "description": "Override the `VMClass`'s `spec.hardware.cpus`.\nIf absent, the class value is used unchanged.",
-              "format": "uint32",
               "maximum": 256,
               "minimum": 1,
               "nullable": true,
@@ -58,7 +57,6 @@
                   },
                   "sizeGiB": {
                     "description": "Override the disk's `sizeGiB`. Must be ≥ the class value (the\nprovider will reject a shrink). If absent, the class size is used.",
-                    "format": "uint32",
                     "maximum": 65536,
                     "minimum": 1,
                     "type": "integer"
@@ -78,7 +76,6 @@
             },
             "memoryMiB": {
               "description": "Override the `VMClass`'s `spec.hardware.memoryMiB`.\nIf absent, the class value is used unchanged.",
-              "format": "uint32",
               "maximum": 4194304,
               "minimum": 128,
               "nullable": true,
@@ -143,7 +140,6 @@
                     "type": "array"
                   },
                   "prefix": {
-                    "format": "uint8",
                     "maximum": 255,
                     "minimum": 0,
                     "type": "integer"

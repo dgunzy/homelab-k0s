@@ -71,8 +71,29 @@ The management plane, the hosts and the GitOps flow stay the same. Each cluster 
 The reference design is written as one combined cluster because that's what one host runs
 today; splitting inference out is the first step when there's a second GPU host.
 
-## Status
+## In the repository
 
-The hosted control plane and the `cpu` pool are next on the [roadmap](../../reference/roadmap/).
-Creating node VMs through Cluster API needs banlieue to deliver each machine's bootstrap data
-to its VM, which is being added upstream.
+Each workload cluster is a directory under `workload-clusters/` and one Flux Kustomization in
+`clusters/homelab/workload-clusters.yaml`. The first, `ai-01`, is the combined topology:
+
+| File | Objects |
+|---|---|
+| `cluster.yaml` | `Cluster`, `K0smotronControlPlane` (k0s 1.37, kine on SQLite, NodePort on the management node) |
+| `pool-cpu.yaml` | `CloudHypervisorMachineTemplate`, `K0sWorkerConfigTemplate`, `MachineDeployment` |
+
+How a node joins, end to end:
+
+1. The `MachineDeployment` creates a `Machine`, a `K0sWorkerConfig` and a
+   `CloudHypervisorMachine` from the templates.
+2. k0smotron renders the worker's join configuration as cloud-config into a bootstrap
+   `Secret`, and Cluster API names it on the `Machine`.
+3. banlieue's controller checks that the `Secret` really is that `Machine`'s bootstrap data and
+   copies it into the `CloudHypervisorMachine`'s user data (`BootstrapDataReady`).
+4. The host's provider boots the VM only then; cloud-init installs k0s and joins the hosted
+   control plane through its NodePort.
+
+Templates are treated as immutable: a change is a new template (`-v2`) and the
+`MachineDeployment` rolls to it.
+
+The objects live in `banlieue-system` because a Cloud Hypervisor host serves only its own
+`Provider`'s namespace. The [roadmap](../../reference/roadmap/) has what's next: the `gpu` pool.

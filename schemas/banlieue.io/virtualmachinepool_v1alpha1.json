@@ -36,7 +36,6 @@
               "type": "array"
             },
             "prefix": {
-              "format": "uint8",
               "maximum": 255,
               "minimum": 0,
               "type": "integer"
@@ -51,28 +50,24 @@
         },
         "maxIdleSeconds": {
           "description": "Replace a Ready member that has sat unclaimed this long. Bounds how\nstale an unpatched warm VM can get between image rebuilds.",
-          "format": "uint64",
           "minimum": 0,
           "nullable": true,
           "type": "integer"
         },
         "maxReplicas": {
           "description": "Hard ceiling on members of any phase, claimed ones included. Leave\nheadroom above `warmReplicas` plus expected concurrent claims, or\nimage rollouts have to trade warm capacity for replacements.",
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "maxSurge": {
           "default": 2,
           "description": "Most members allowed to be provisioning at once. Bounds the install\nload a refill puts on the hosts that claimed members are running on.",
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "provisioningTimeoutSeconds": {
           "default": 1800,
           "description": "A member still provisioning after this long is treated as poisoned\nand deleted, never repaired.",
-          "format": "uint64",
           "minimum": 0,
           "type": "integer"
         },
@@ -146,7 +141,6 @@
                   "properties": {
                     "cpus": {
                       "description": "Override the `VMClass`'s `spec.hardware.cpus`.\nIf absent, the class value is used unchanged.",
-                      "format": "uint32",
                       "maximum": 256,
                       "minimum": 1,
                       "nullable": true,
@@ -164,7 +158,6 @@
                           },
                           "sizeGiB": {
                             "description": "Override the disk's `sizeGiB`. Must be ≥ the class value (the\nprovider will reject a shrink). If absent, the class size is used.",
-                            "format": "uint32",
                             "maximum": 65536,
                             "minimum": 1,
                             "type": "integer"
@@ -184,7 +177,6 @@
                     },
                     "memoryMiB": {
                       "description": "Override the `VMClass`'s `spec.hardware.memoryMiB`.\nIf absent, the class value is used unchanged.",
-                      "format": "uint32",
                       "maximum": 4194304,
                       "minimum": 128,
                       "nullable": true,
@@ -249,7 +241,6 @@
                             "type": "array"
                           },
                           "prefix": {
-                            "format": "uint8",
                             "maximum": 255,
                             "minimum": 0,
                             "type": "integer"
@@ -511,7 +502,6 @@
         },
         "warmReplicas": {
           "description": "How many Ready, unclaimed members to keep available.",
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         }
@@ -531,13 +521,11 @@
         "available": {
           "default": 0,
           "description": "Ready and unclaimed: what a claim can bind right now.",
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "claimed": {
           "default": 0,
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
@@ -596,14 +584,12 @@
         },
         "provisioning": {
           "default": 0,
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "replicas": {
           "default": 0,
           "description": "Members of any phase, excluding ones already being deleted.",
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         }

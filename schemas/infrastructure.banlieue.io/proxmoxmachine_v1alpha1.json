@@ -7,7 +7,6 @@
       "properties": {
         "cores": {
           "description": "Cores per socket.",
-          "format": "uint32",
           "maximum": 512,
           "minimum": 1,
           "type": "integer"
@@ -39,7 +38,6 @@
               },
               "sizeGiB": {
                 "description": "Size in GiB.",
-                "format": "uint32",
                 "maximum": 65536,
                 "minimum": 1,
                 "type": "integer"
@@ -96,7 +94,6 @@
         },
         "memoryMiB": {
           "description": "Memory in MiB.",
-          "format": "uint32",
           "maximum": 4194304,
           "minimum": 16,
           "type": "integer"
@@ -175,7 +172,6 @@
                         "type": "array"
                       },
                       "prefix": {
-                        "format": "uint8",
                         "maximum": 255,
                         "minimum": 0,
                         "type": "integer"
@@ -212,7 +208,6 @@
               },
               "vlan": {
                 "description": "802.1Q VLAN tag.",
-                "format": "uint16",
                 "maximum": 4094,
                 "minimum": 1,
                 "nullable": true,
@@ -235,7 +230,6 @@
         },
         "osDiskSizeGiB": {
           "description": "OS disk size in GiB: the cloned disk is grown to at least this, never\nshrunk.",
-          "format": "uint32",
           "maximum": 65536,
           "minimum": 1,
           "type": "integer"
@@ -266,7 +260,6 @@
         "sockets": {
           "default": 1,
           "description": "CPU sockets.",
-          "format": "uint32",
           "maximum": 4,
           "minimum": 1,
           "type": "integer"
@@ -277,7 +270,6 @@
         },
         "templateVmid": {
           "description": "VMID of the template VM to clone. Must be a template (ADR-0075\nDecision 5a); the provider checks before cloning.",
-          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
@@ -443,7 +435,6 @@
         },
         "vmid": {
           "description": "The VMID, recorded before the clone so a crash cannot allocate a\nsecond VM (ADR-0075 Decision 4). A cache, not the source of truth: the\nVM's name is the ownership marker.",
-          "format": "uint32",
           "minimum": 0,
           "nullable": true,
           "type": "integer"

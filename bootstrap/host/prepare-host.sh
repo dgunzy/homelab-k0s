@@ -17,9 +17,9 @@
 set -euo pipefail
 
 # --- Pins (the same on every host) --------------------------------------------
-BANLIEUE_VERSION="0.5.7"
+BANLIEUE_VERSION="0.5.8"
 # From the release's checksums.sha256 (signed with the release).
-BANLIEUE_SHA256="996f5c3a46c5fab38de53c97de9c0ea432292f74376b3a29ebd96014d8b9774a"
+BANLIEUE_SHA256="9349f65cf9cbbd86edf8ddaaa45c0e7a4d470ff597236e25fc0572265b23c814"
 K0SCTL_VERSION="0.31.3"
 K0SCTL_SHA256="c055473be106deead180594f2610b8cca5fec97e69a710c92c1f26088bbd2255"
 TAILSCALE_VERSION="1.104.7"

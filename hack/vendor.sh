@@ -17,12 +17,12 @@ set -euo pipefail
 CERT_MANAGER_VERSION="v1.21.3"
 CAPI_VERSION="v1.14.4"            # Cluster API core, v1beta2 contract
 K0SMOTRON_VERSION="v2.3.1"        # bootstrap + control plane providers, v1beta2 contract
-BANLIEUE_VERSION="v0.5.7"         # keep in step with prepare-host.sh (host binary)
+BANLIEUE_VERSION="v0.5.8"         # keep in step with prepare-host.sh (host binary)
 # banlieue signs a checksums file per release; the others don't publish one
 # for these manifests, so their review is the git diff.
-BANLIEUE_COMPONENTS_SHA256="a66a933dcb0dcab040eed21e1061270f90bcaafdd7b42b811233939f99829f12"
-BANLIEUE_CRDS_SHA256="6678ca2c90c4a6d6bda5dbabc7ad3a029b913a2d3b55216a9c5452d5e932157b"
-BANLIEUE_ADMISSION_SHA256="277b285b7d6ddc7e60dcaf1c6841c648b73e4664a13bd0a96730d6ec0d21d947"
+BANLIEUE_COMPONENTS_SHA256="ac6f145385bce3fa402b1f8480485361d6318f798c6cb325db39766ea9875d04"
+BANLIEUE_CRDS_SHA256="c1cffa32857cbdab40022c92a96eb57353f035711317b0b06818ef980b0e8a17"
+BANLIEUE_ADMISSION_SHA256="156b0a4660cfa69aa140137f2bf22600bb257422e125a273dd5189a73779fa10"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
@@ -67,14 +67,6 @@ PY
 # kustomize rejects as a duplicate; the kustomization declares it once instead.
 drop_namespaces() { drop_kinds "$1" Namespace; }
 
-# MutatingAdmissionPolicy is served (admissionregistration.k8s.io/v1) only
-# from Kubernetes 1.36; on 1.35 applying it fails the whole Kustomization.
-# Delete this filter (and re-vendor) only AFTER `bootstrap-mgmt.sh upgrade`
-# has moved the management cluster to 1.36+ (target: 1.37), not before.
-drop_mutating_admission_policies() {
-  drop_kinds "$1" MutatingAdmissionPolicy MutatingAdmissionPolicyBinding
-}
-
 gh_dl() { printf 'https://github.com/%s/releases/download/%s/%s' "$1" "$2" "$3"; }
 
 fetch "$(gh_dl cert-manager/cert-manager "$CERT_MANAGER_VERSION" cert-manager.yaml)" \
@@ -93,8 +85,7 @@ fetch "$(gh_dl firestoned/banlieue "$BANLIEUE_VERSION" infrastructure-components
 # ValidatingAdmissionPolicies (banlieue ADR-0007), e.g. a VirtualMachine may
 # only reference user-data its creator could read itself (ADR-0042).
 fetch "$(gh_dl firestoned/banlieue "$BANLIEUE_VERSION" admission-policies.yaml)" \
-  "$root/infrastructure/banlieue/admission-policies.yaml" "$BANLIEUE_ADMISSION_SHA256" \
-  drop_mutating_admission_policies
+  "$root/infrastructure/banlieue/admission-policies.yaml" "$BANLIEUE_ADMISSION_SHA256"
 
 # banlieue isn't in the flux-schema ecosystem catalog yet: extract its CRDs'
 # schemas so CI can validate Provider, VMImage, VirtualMachine, ...

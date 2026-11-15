@@ -17,8 +17,8 @@ set -euo pipefail
 
 # --- Pins ---------------------------------------------------------------------
 # banlieue's k0s bootstrap script at the release prepare-host.sh installs.
-BANLIEUE_VERSION="0.5.7"
-BANLIEUE_SCRIPT_SHA256="a958d13cc635773633b781bd4b220410fddd23cf2a93a161c07e2182c4bb052d"
+BANLIEUE_VERSION="0.5.8"
+BANLIEUE_SCRIPT_SHA256="b23a99686a35be5e31b9cc17df38d361445c90fe91b303cdfc9a330079705adf"
 # Flux Operator: deliberately the latest release (test cluster; Flux keeps it
 # current afterwards from the signed distribution artifact).
 FLUX_OPERATOR_INSTALL="https://github.com/controlplaneio-fluxcd/flux-operator/releases/latest/download/install.yaml"

@@ -1,0 +1,29 @@
+# Workload clusters, one Flux Kustomization each: a Cluster API definition
+# applied to the management cluster. Another cluster is another directory
+# under workload-clusters/ and another Kustomization here.
+#
+# Suspended: set suspend to false in git to create it. The management cluster
+# is on 1.37; the remaining gate is host RAM while GPU passthrough is tested.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ai-01
+  namespace: flux-system
+spec:
+  suspend: true
+  dependsOn:
+    - name: k0smotron
+    - name: banlieue
+    - name: hosts
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./workload-clusters/ai-01
+  prune: true
+  # Not wait: a cluster takes longer than any sensible timeout to come up the
+  # first time (VM boot, k0s download over Wi-Fi). Watch it with
+  # `clusterctl describe cluster` or `kubectl get cluster,machines -A`.
+  wait: false

@@ -29,7 +29,7 @@ scripts or manifests.
 |---|---|---|
 | `kubectl get provider <name>` returned NotFound for an object that existed | Cluster API also defines a `Provider` kind | Use `providers.banlieue.io` |
 | A VM never scheduled | banlieue schedules VMs only onto Providers in the VM's own namespace | Put VMs for host providers in `banlieue-system` |
-| An admission policy manifest failed to apply | `MutatingAdmissionPolicy` is only served from Kubernetes 1.36 | Filter it out at vendor time on older clusters |
+| An admission policy manifest failed to apply | `MutatingAdmissionPolicy` is only served from Kubernetes 1.36 | Filtered it out at vendor time until the management cluster was upgraded to 1.37, then dropped the filter |
 | Flux would have erased literal `${...}` templates in a manifest | `postBuild` substitution applies to every string | Enable substitution only where a manifest is a clusterctl template |
 | Interactive diagrams vanished on hover | React Flow hides nodes until measured; rebuilding node objects loses the measurements | Build nodes once; highlight with CSS |
 

@@ -1,6 +1,6 @@
 # Vendored by hack/vendor.sh. Do not edit; change the pin and re-run.
-# Source: https://github.com/firestoned/banlieue/releases/download/v0.5.7/infrastructure-components.yaml
-# sha256 (as released): a66a933dcb0dcab040eed21e1061270f90bcaafdd7b42b811233939f99829f12
+# Source: https://github.com/firestoned/banlieue/releases/download/v0.5.8/infrastructure-components.yaml
+# sha256 (as released): ac6f145385bce3fa402b1f8480485361d6318f798c6cb325db39766ea9875d04
 ---
 apiVersion: v1
 kind: Namespace
@@ -511,7 +511,6 @@ spec:
                       `attributes.capacity.cpus`. `1` means no overcommit. CPU contention
                       only slows guests, so the default allows 4; memory is never
                       overcommitted. Unset: 4.
-                    format: uint32
                     maximum: 64.0
                     minimum: 1.0
                     nullable: true
@@ -521,7 +520,6 @@ spec:
                       Percent of each store's `totalGiB` the scheduler keeps free when it
                       places a new VM's disks (ADR-0128): a full store pauses the guests
                       already on it. `0` disables the reserve. Unset: 10.
-                    format: uint32
                     maximum: 50.0
                     minimum: 0.0
                     nullable: true
@@ -643,7 +641,6 @@ spec:
                               description: |-
                                 Logical CPUs guests may use. vCPUs are placed up to this times the
                                 Provider's `scheduling.cpuOvercommitRatio`.
-                              format: uint32
                               minimum: 0.0
                               nullable: true
                               type: integer
@@ -652,7 +649,6 @@ spec:
                                 Memory a new guest could take now, MiB, as the provider measured it
                                 (ADR-0128). Includes what running VMs already use, so the scheduler
                                 checks it for new placements only. Never more than `memoryMiB`.
-                              format: uint64
                               minimum: 0.0
                               nullable: true
                               type: integer
@@ -661,13 +657,11 @@ spec:
                                 Memory guests may use, MiB: the host's, or a smaller budget the host
                                 declares for guests (a Cloud Hypervisor host's guests' slice,
                                 ADR-0105). Never overcommitted.
-                              format: uint64
                               minimum: 0.0
                               nullable: true
                               type: integer
                             memoryOverheadMiBPerVM:
                               description: Memory each VM costs beyond its class's `memoryMiB` (its VMM), MiB.
-                              format: uint64
                               minimum: 0.0
                               nullable: true
                               type: integer
@@ -682,7 +676,6 @@ spec:
                                     description: |-
                                       Space a new disk could take now, GiB, for the writer the provider
                                       runs as.
-                                    format: uint64
                                     minimum: 0.0
                                     nullable: true
                                     type: integer
@@ -697,7 +690,6 @@ spec:
                                     type: string
                                   totalGiB:
                                     description: The store's size, GiB.
-                                    format: uint64
                                     minimum: 0.0
                                     nullable: true
                                     type: integer
@@ -1449,7 +1441,6 @@ spec:
                     description: |-
                       Override the `VMClass`'s `spec.hardware.cpus`.
                       If absent, the class value is used unchanged.
-                    format: uint32
                     maximum: 256.0
                     minimum: 1.0
                     nullable: true
@@ -1478,7 +1469,6 @@ spec:
                           description: |-
                             Override the disk's `sizeGiB`. Must be ≥ the class value (the
                             provider will reject a shrink). If absent, the class size is used.
-                          format: uint32
                           maximum: 65536.0
                           minimum: 1.0
                           type: integer
@@ -1494,7 +1484,6 @@ spec:
                     description: |-
                       Override the `VMClass`'s `spec.hardware.memoryMiB`.
                       If absent, the class value is used unchanged.
-                    format: uint32
                     maximum: 4194304.0
                     minimum: 128.0
                     nullable: true
@@ -1569,7 +1558,6 @@ spec:
                             type: string
                           type: array
                         prefix:
-                          format: uint8
                           maximum: 255.0
                           minimum: 0.0
                           type: integer
@@ -2091,7 +2079,6 @@ spec:
                       type: string
                     type: array
                   prefix:
-                    format: uint8
                     maximum: 255.0
                     minimum: 0.0
                     type: integer
@@ -2104,7 +2091,6 @@ spec:
                 description: |-
                   Replace a Ready member that has sat unclaimed this long. Bounds how
                   stale an unpatched warm VM can get between image rebuilds.
-                format: uint64
                 minimum: 0.0
                 nullable: true
                 type: integer
@@ -2113,7 +2099,6 @@ spec:
                   Hard ceiling on members of any phase, claimed ones included. Leave
                   headroom above `warmReplicas` plus expected concurrent claims, or
                   image rollouts have to trade warm capacity for replacements.
-                format: uint32
                 minimum: 0.0
                 type: integer
               maxSurge:
@@ -2121,7 +2106,6 @@ spec:
                 description: |-
                   Most members allowed to be provisioning at once. Bounds the install
                   load a refill puts on the hosts that claimed members are running on.
-                format: uint32
                 minimum: 0.0
                 type: integer
               provisioningTimeoutSeconds:
@@ -2129,7 +2113,6 @@ spec:
                 description: |-
                   A member still provisioning after this long is treated as poisoned
                   and deleted, never repaired.
-                format: uint64
                 minimum: 0.0
                 type: integer
               readiness:
@@ -2246,7 +2229,6 @@ spec:
                             description: |-
                               Override the `VMClass`'s `spec.hardware.cpus`.
                               If absent, the class value is used unchanged.
-                            format: uint32
                             maximum: 256.0
                             minimum: 1.0
                             nullable: true
@@ -2275,7 +2257,6 @@ spec:
                                   description: |-
                                     Override the disk's `sizeGiB`. Must be ≥ the class value (the
                                     provider will reject a shrink). If absent, the class size is used.
-                                  format: uint32
                                   maximum: 65536.0
                                   minimum: 1.0
                                   type: integer
@@ -2291,7 +2272,6 @@ spec:
                             description: |-
                               Override the `VMClass`'s `spec.hardware.memoryMiB`.
                               If absent, the class value is used unchanged.
-                            format: uint32
                             maximum: 4194304.0
                             minimum: 128.0
                             nullable: true
@@ -2366,7 +2346,6 @@ spec:
                                     type: string
                                   type: array
                                 prefix:
-                                  format: uint8
                                   maximum: 255.0
                                   minimum: 0.0
                                   type: integer
@@ -2561,7 +2540,6 @@ spec:
                 type: object
               warmReplicas:
                 description: How many Ready, unclaimed members to keep available.
-                format: uint32
                 minimum: 0.0
                 type: integer
             required:
@@ -2576,12 +2554,10 @@ spec:
               available:
                 default: 0
                 description: "Ready and unclaimed: what a claim can bind right now."
-                format: uint32
                 minimum: 0.0
                 type: integer
               claimed:
                 default: 0
-                format: uint32
                 minimum: 0.0
                 type: integer
               conditions:
@@ -2626,13 +2602,11 @@ spec:
                 type: integer
               provisioning:
                 default: 0
-                format: uint32
                 minimum: 0.0
                 type: integer
               replicas:
                 default: 0
                 description: Members of any phase, excluding ones already being deleted.
-                format: uint32
                 minimum: 0.0
                 type: integer
             type: object
@@ -2758,7 +2732,6 @@ spec:
                   creation — a claim that waited ten minutes for capacity still gets
                   its full TTL. Required, with no default: a claim without a deadline
                   is a leaked VM, and the right value is a property of the workload.
-                format: uint64
                 minimum: 0.0
                 type: integer
             required:
@@ -3035,13 +3008,11 @@ spec:
             properties:
               bytesSent:
                 description: Bytes sent so far.
-                format: uint64
                 minimum: 0.0
                 nullable: true
                 type: integer
               bytesTotal:
                 description: Bytes the source has to send (disk extents and VMM state), once known.
-                format: uint64
                 minimum: 0.0
                 nullable: true
                 type: integer
@@ -3092,7 +3063,6 @@ spec:
                 type: string
               downtimeMilliseconds:
                 description: How long the guest was paused, cutover to resume. Set on `Succeeded`.
-                format: uint64
                 minimum: 0.0
                 nullable: true
                 type: integer
@@ -3250,7 +3220,6 @@ spec:
                 properties:
                   cpus:
                     description: Number of virtual CPUs.
-                    format: uint32
                     maximum: 256.0
                     minimum: 1.0
                     type: integer
@@ -3281,7 +3250,6 @@ spec:
                           description: |-
                             Size in GiB. For the OS disk this is the minimum size; if the image
                             is larger, the provider grows accordingly.
-                          format: uint32
                           maximum: 65536.0
                           minimum: 1.0
                           type: integer
@@ -3300,7 +3268,6 @@ spec:
                     type: array
                   memoryMiB:
                     description: Memory in MiB.
-                    format: uint32
                     maximum: 4194304.0
                     minimum: 128.0
                     type: integer
@@ -3378,7 +3345,6 @@ spec:
                                     type: string
                                   type: array
                                 prefix:
-                                  format: uint8
                                   maximum: 255.0
                                   minimum: 0.0
                                   nullable: true
@@ -3387,7 +3353,6 @@ spec:
                           type: object
                         mtu:
                           description: Optional MTU override. Provider may ignore if unsupported.
-                          format: uint32
                           maximum: 65535.0
                           minimum: 68.0
                           nullable: true
@@ -3605,7 +3570,6 @@ spec:
                       sealed; after that `GuestReady` is `False` with reason
                       `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                       initramfs and never reports anything, so this is how it is noticed.
-                    format: uint32
                     maximum: 86400.0
                     minimum: 60.0
                     type: integer
@@ -3702,7 +3666,6 @@ spec:
                       this size and does not grow on a larger one, and a smaller one cannot
                       hold the image: give the classes that use this image this disk size
                       (ADR-0113 Decision 4).
-                    format: uint32
                     maximum: 65536.0
                     minimum: 10.0
                     type: integer
@@ -4093,7 +4056,6 @@ spec:
                       The disk size, in GiB, the artifact was pre-laid for (ADR-0113), when
                       `spec.prelay` was honoured: `file` is then the pre-laid image and
                       `checksum` its digest, computed by the builder. Omitted otherwise.
-                    format: uint32
                     minimum: 0.0
                     nullable: true
                     type: integer
@@ -4370,7 +4332,6 @@ spec:
                 properties:
                   boot:
                     description: vCPUs the guest boots with.
-                    format: uint32
                     maximum: 256.0
                     minimum: 1.0
                     type: integer
@@ -4378,7 +4339,6 @@ spec:
                     description: |-
                       Hotplug headroom: the most vCPUs the guest may be resized to. Fixed
                       when the VM is created. `None` means no headroom.
-                    format: uint32
                     maximum: 256.0
                     minimum: 1.0
                     nullable: true
@@ -4429,7 +4389,6 @@ spec:
                       sealed; after that `GuestReady` is `False` with reason
                       `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                       initramfs and never reports anything, so this is how it is noticed.
-                    format: uint32
                     maximum: 86400.0
                     minimum: 60.0
                     type: integer
@@ -4468,7 +4427,6 @@ spec:
                     type: boolean
                   sizeMiB:
                     description: Guest memory in MiB.
-                    format: uint32
                     maximum: 4194304.0
                     minimum: 128.0
                     type: integer
@@ -4611,7 +4569,6 @@ spec:
                                 type: string
                               type: array
                             prefix:
-                              format: uint8
                               maximum: 255.0
                               minimum: 0.0
                               type: integer
@@ -4645,7 +4602,6 @@ spec:
                 description: |-
                   OS disk size in GiB. Required, and grown to before first boot; never
                   shrunk. Must be at least the image's size.
-                format: uint32
                 maximum: 65536.0
                 minimum: 1.0
                 type: integer
@@ -4786,7 +4742,6 @@ spec:
                   The unprivileged host uid this machine's units run as (ADR-0063
                   Decision 3). Recorded so the provider re-adopts a running guest
                   without trusting its own memory.
-                format: uint32
                 minimum: 0.0
                 nullable: true
                 type: integer
@@ -4846,13 +4801,11 @@ spec:
                 properties:
                   bytesSent:
                     description: Bytes sent so far.
-                    format: uint64
                     minimum: 0.0
                     nullable: true
                     type: integer
                   bytesTotal:
                     description: Bytes to send, once known.
-                    format: uint64
                     minimum: 0.0
                     nullable: true
                     type: integer
@@ -4993,7 +4946,6 @@ spec:
                         properties:
                           boot:
                             description: vCPUs the guest boots with.
-                            format: uint32
                             maximum: 256.0
                             minimum: 1.0
                             type: integer
@@ -5001,7 +4953,6 @@ spec:
                             description: |-
                               Hotplug headroom: the most vCPUs the guest may be resized to. Fixed
                               when the VM is created. `None` means no headroom.
-                            format: uint32
                             maximum: 256.0
                             minimum: 1.0
                             nullable: true
@@ -5052,7 +5003,6 @@ spec:
                               sealed; after that `GuestReady` is `False` with reason
                               `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                               initramfs and never reports anything, so this is how it is noticed.
-                            format: uint32
                             maximum: 86400.0
                             minimum: 60.0
                             type: integer
@@ -5091,7 +5041,6 @@ spec:
                             type: boolean
                           sizeMiB:
                             description: Guest memory in MiB.
-                            format: uint32
                             maximum: 4194304.0
                             minimum: 128.0
                             type: integer
@@ -5234,7 +5183,6 @@ spec:
                                         type: string
                                       type: array
                                     prefix:
-                                      format: uint8
                                       maximum: 255.0
                                       minimum: 0.0
                                       type: integer
@@ -5268,7 +5216,6 @@ spec:
                         description: |-
                           OS disk size in GiB. Required, and grown to before first boot; never
                           shrunk. Must be at least the image's size.
-                        format: uint32
                         maximum: 65536.0
                         minimum: 1.0
                         type: integer
@@ -5439,7 +5386,6 @@ spec:
                       description: |-
                         Disk size in GiB. For an overlay OS disk this is a floor — the
                         overlay is created at least this large.
-                      format: uint32
                       maximum: 65536.0
                       minimum: 1.0
                       type: integer
@@ -5506,7 +5452,6 @@ spec:
                       sealed; after that `GuestReady` is `False` with reason
                       `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                       initramfs and never reports anything, so this is how it is noticed.
-                    format: uint32
                     maximum: 86400.0
                     minimum: 60.0
                     type: integer
@@ -5520,7 +5465,6 @@ spec:
                 type: string
               memoryMiB:
                 description: Memory in MiB.
-                format: uint32
                 maximum: 4194304.0
                 minimum: 128.0
                 type: integer
@@ -5582,7 +5526,6 @@ spec:
                                 type: string
                               type: array
                             prefix:
-                              format: uint8
                               maximum: 255.0
                               minimum: 0.0
                               type: integer
@@ -5683,7 +5626,6 @@ spec:
                 type: string
               vcpus:
                 description: Number of virtual CPUs.
-                format: uint32
                 maximum: 256.0
                 minimum: 1.0
                 type: integer
@@ -6004,7 +5946,6 @@ spec:
                               description: |-
                                 Disk size in GiB. For an overlay OS disk this is a floor — the
                                 overlay is created at least this large.
-                              format: uint32
                               maximum: 65536.0
                               minimum: 1.0
                               type: integer
@@ -6071,7 +6012,6 @@ spec:
                               sealed; after that `GuestReady` is `False` with reason
                               `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                               initramfs and never reports anything, so this is how it is noticed.
-                            format: uint32
                             maximum: 86400.0
                             minimum: 60.0
                             type: integer
@@ -6085,7 +6025,6 @@ spec:
                         type: string
                       memoryMiB:
                         description: Memory in MiB.
-                        format: uint32
                         maximum: 4194304.0
                         minimum: 128.0
                         type: integer
@@ -6147,7 +6086,6 @@ spec:
                                         type: string
                                       type: array
                                     prefix:
-                                      format: uint8
                                       maximum: 255.0
                                       minimum: 0.0
                                       type: integer
@@ -6248,7 +6186,6 @@ spec:
                         type: string
                       vcpus:
                         description: Number of virtual CPUs.
-                        format: uint32
                         maximum: 256.0
                         minimum: 1.0
                         type: integer
@@ -6335,7 +6272,6 @@ spec:
             properties:
               cores:
                 description: Cores per socket.
-                format: uint32
                 maximum: 512.0
                 minimum: 1.0
                 type: integer
@@ -6363,7 +6299,6 @@ spec:
                       type: string
                     sizeGiB:
                       description: Size in GiB.
-                      format: uint32
                       maximum: 65536.0
                       minimum: 1.0
                       type: integer
@@ -6414,7 +6349,6 @@ spec:
                 type: string
               memoryMiB:
                 description: Memory in MiB.
-                format: uint32
                 maximum: 4194304.0
                 minimum: 16.0
                 type: integer
@@ -6479,7 +6413,6 @@ spec:
                                 type: string
                               type: array
                             prefix:
-                              format: uint8
                               maximum: 255.0
                               minimum: 0.0
                               type: integer
@@ -6506,7 +6439,6 @@ spec:
                       type: string
                     vlan:
                       description: 802.1Q VLAN tag.
-                      format: uint16
                       maximum: 4094.0
                       minimum: 1.0
                       nullable: true
@@ -6525,7 +6457,6 @@ spec:
                 description: |-
                   OS disk size in GiB: the cloned disk is grown to at least this, never
                   shrunk.
-                format: uint32
                 maximum: 65536.0
                 minimum: 1.0
                 type: integer
@@ -6551,7 +6482,6 @@ spec:
               sockets:
                 default: 1
                 description: CPU sockets.
-                format: uint32
                 maximum: 4.0
                 minimum: 1.0
                 type: integer
@@ -6564,7 +6494,6 @@ spec:
                 description: |-
                   VMID of the template VM to clone. Must be a template (ADR-0075
                   Decision 5a); the provider checks before cloning.
-                format: uint32
                 minimum: 0.0
                 type: integer
               tpmEnabled:
@@ -6704,7 +6633,6 @@ spec:
                   The VMID, recorded before the clone so a crash cannot allocate a
                   second VM (ADR-0075 Decision 4). A cache, not the source of truth: the
                   VM's name is the ownership marker.
-                format: uint32
                 minimum: 0.0
                 nullable: true
                 type: integer
@@ -6760,7 +6688,6 @@ spec:
                     properties:
                       cores:
                         description: Cores per socket.
-                        format: uint32
                         maximum: 512.0
                         minimum: 1.0
                         type: integer
@@ -6788,7 +6715,6 @@ spec:
                               type: string
                             sizeGiB:
                               description: Size in GiB.
-                              format: uint32
                               maximum: 65536.0
                               minimum: 1.0
                               type: integer
@@ -6839,7 +6765,6 @@ spec:
                         type: string
                       memoryMiB:
                         description: Memory in MiB.
-                        format: uint32
                         maximum: 4194304.0
                         minimum: 16.0
                         type: integer
@@ -6904,7 +6829,6 @@ spec:
                                         type: string
                                       type: array
                                     prefix:
-                                      format: uint8
                                       maximum: 255.0
                                       minimum: 0.0
                                       type: integer
@@ -6931,7 +6855,6 @@ spec:
                               type: string
                             vlan:
                               description: 802.1Q VLAN tag.
-                              format: uint16
                               maximum: 4094.0
                               minimum: 1.0
                               nullable: true
@@ -6950,7 +6873,6 @@ spec:
                         description: |-
                           OS disk size in GiB: the cloned disk is grown to at least this, never
                           shrunk.
-                        format: uint32
                         maximum: 65536.0
                         minimum: 1.0
                         type: integer
@@ -6976,7 +6898,6 @@ spec:
                       sockets:
                         default: 1
                         description: CPU sockets.
-                        format: uint32
                         maximum: 4.0
                         minimum: 1.0
                         type: integer
@@ -6989,7 +6910,6 @@ spec:
                         description: |-
                           VMID of the template VM to clone. Must be a template (ADR-0075
                           Decision 5a); the provider checks before cloning.
-                        format: uint32
                         minimum: 0.0
                         type: integer
                       tpmEnabled:
@@ -7483,7 +7403,6 @@ spec:
                       description: |-
                         Disk size in GiB. For the OS disk this is a floor — the template's disk
                         is grown to at least this size.
-                      format: uint32
                       maximum: 65536.0
                       minimum: 1.0
                       type: integer
@@ -7536,7 +7455,6 @@ spec:
                       sealed; after that `GuestReady` is `False` with reason
                       `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                       initramfs and never reports anything, so this is how it is noticed.
-                    format: uint32
                     maximum: 86400.0
                     minimum: 60.0
                     type: integer
@@ -7551,7 +7469,6 @@ spec:
                 type: string
               memoryMiB:
                 description: Memory in MiB.
-                format: uint32
                 maximum: 4194304.0
                 minimum: 128.0
                 type: integer
@@ -7613,7 +7530,6 @@ spec:
                                 type: string
                               type: array
                             prefix:
-                              format: uint8
                               maximum: 255.0
                               minimum: 0.0
                               type: integer
@@ -7642,7 +7558,6 @@ spec:
                 type: array
               numCpus:
                 description: Number of virtual CPUs.
-                format: uint32
                 maximum: 256.0
                 minimum: 1.0
                 type: integer
@@ -8015,7 +7930,6 @@ spec:
                               description: |-
                                 Disk size in GiB. For the OS disk this is a floor — the template's disk
                                 is grown to at least this size.
-                              format: uint32
                               maximum: 65536.0
                               minimum: 1.0
                               type: integer
@@ -8068,7 +7982,6 @@ spec:
                               sealed; after that `GuestReady` is `False` with reason
                               `FirstBootSealingTimeout`. A clone that cannot seal halts in its
                               initramfs and never reports anything, so this is how it is noticed.
-                            format: uint32
                             maximum: 86400.0
                             minimum: 60.0
                             type: integer
@@ -8083,7 +7996,6 @@ spec:
                         type: string
                       memoryMiB:
                         description: Memory in MiB.
-                        format: uint32
                         maximum: 4194304.0
                         minimum: 128.0
                         type: integer
@@ -8145,7 +8057,6 @@ spec:
                                         type: string
                                       type: array
                                     prefix:
-                                      format: uint8
                                       maximum: 255.0
                                       minimum: 0.0
                                       type: integer
@@ -8174,7 +8085,6 @@ spec:
                         type: array
                       numCpus:
                         description: Number of virtual CPUs.
-                        format: uint32
                         maximum: 256.0
                         minimum: 1.0
                         type: integer
@@ -8429,6 +8339,32 @@ rules:
   - patch
   - delete
 - apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - machines
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apiextensions.k8s.io
+  resourceNames:
+  - machines.cluster.x-k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - ""
   resources:
   - events
@@ -8494,6 +8430,14 @@ rules:
   - update
   - patch
   - delete
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -8937,6 +8881,7 @@ metadata:
     app.kubernetes.io/component: capi-infrastructure
     app.kubernetes.io/name: banlieue
     cluster.x-k8s.io/aggregate-to-manager: "true"
+    kubeadm.controlplane.cluster.x-k8s.io/aggregate-to-manager: "true"
   name: banlieue-capi-infrastructure
 rules:
 - apiGroups:
@@ -9179,7 +9124,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: ghcr.io/firestoned/banlieue:v0.5.7@sha256:ace5e29849389cec63b34d2f9b18fcaf32ea49b97902c0a2fe0bab643999fccc
+        image: ghcr.io/firestoned/banlieue:v0.5.8@sha256:99104749aeca038af0407cc8e732ea5c2a61820c2d81050178af30fc6a786752
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -9262,7 +9207,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: ghcr.io/firestoned/banlieue:v0.5.7@sha256:ace5e29849389cec63b34d2f9b18fcaf32ea49b97902c0a2fe0bab643999fccc
+        image: ghcr.io/firestoned/banlieue:v0.5.8@sha256:99104749aeca038af0407cc8e732ea5c2a61820c2d81050178af30fc6a786752
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -9322,8 +9267,8 @@ spec:
   backend: vsphere
   image:
     repository: ghcr.io/firestoned/banlieue
-    tag: v0.5.7
-    digest: sha256:ace5e29849389cec63b34d2f9b18fcaf32ea49b97902c0a2fe0bab643999fccc
+    tag: v0.5.8
+    digest: sha256:99104749aeca038af0407cc8e732ea5c2a61820c2d81050178af30fc6a786752
     pullPolicy: IfNotPresent
 ---
 apiVersion: banlieue.io/v1alpha1
@@ -9337,8 +9282,8 @@ spec:
   backend: libvirt
   image:
     repository: ghcr.io/firestoned/banlieue
-    tag: v0.5.7
-    digest: sha256:ace5e29849389cec63b34d2f9b18fcaf32ea49b97902c0a2fe0bab643999fccc
+    tag: v0.5.8
+    digest: sha256:99104749aeca038af0407cc8e732ea5c2a61820c2d81050178af30fc6a786752
     pullPolicy: IfNotPresent
   additionalRules:
   - apiGroups:
@@ -9361,8 +9306,8 @@ spec:
   backend: proxmox
   image:
     repository: ghcr.io/firestoned/banlieue
-    tag: v0.5.7
-    digest: sha256:ace5e29849389cec63b34d2f9b18fcaf32ea49b97902c0a2fe0bab643999fccc
+    tag: v0.5.8
+    digest: sha256:99104749aeca038af0407cc8e732ea5c2a61820c2d81050178af30fc6a786752
     pullPolicy: IfNotPresent
 ---
 apiVersion: banlieue.io/v1alpha1

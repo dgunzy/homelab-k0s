@@ -34,14 +34,12 @@
           "properties": {
             "boot": {
               "description": "vCPUs the guest boots with.",
-              "format": "uint32",
               "maximum": 256,
               "minimum": 1,
               "type": "integer"
             },
             "max": {
               "description": "Hotplug headroom: the most vCPUs the guest may be resized to. Fixed\nwhen the VM is created. `None` means no headroom.",
-              "format": "uint32",
               "maximum": 256,
               "minimum": 1,
               "nullable": true,
@@ -87,7 +85,6 @@
             "timeoutSeconds": {
               "default": 600,
               "description": "Seconds from the machine's power-on (its infrastructure `Ready`\ntransition) within which the guest must report every listed partition\nsealed; after that `GuestReady` is `False` with reason\n`FirstBootSealingTimeout`. A clone that cannot seal halts in its\ninitramfs and never reports anything, so this is how it is noticed.",
-              "format": "uint32",
               "maximum": 86400,
               "minimum": 60,
               "type": "integer"
@@ -132,7 +129,6 @@
             },
             "sizeMiB": {
               "description": "Guest memory in MiB.",
-              "format": "uint32",
               "maximum": 4194304,
               "minimum": 128,
               "type": "integer"
@@ -307,7 +303,6 @@
                         "type": "array"
                       },
                       "prefix": {
-                        "format": "uint8",
                         "maximum": 255,
                         "minimum": 0,
                         "type": "integer"
@@ -348,7 +343,6 @@
         },
         "osDiskSizeGiB": {
           "description": "OS disk size in GiB. Required, and grown to before first boot; never\nshrunk. Must be at least the image's size.",
-          "format": "uint32",
           "maximum": 65536,
           "minimum": 1,
           "type": "integer"
@@ -507,7 +501,6 @@
         },
         "hostUid": {
           "description": "The unprivileged host uid this machine's units run as (ADR-0063\nDecision 3). Recorded so the provider re-adopts a running guest\nwithout trusting its own memory.",
-          "format": "uint32",
           "minimum": 0,
           "nullable": true,
           "type": "integer"
@@ -579,14 +572,12 @@
           "properties": {
             "bytesSent": {
               "description": "Bytes sent so far.",
-              "format": "uint64",
               "minimum": 0,
               "nullable": true,
               "type": "integer"
             },
             "bytesTotal": {
               "description": "Bytes to send, once known.",
-              "format": "uint64",
               "minimum": 0,
               "nullable": true,
               "type": "integer"

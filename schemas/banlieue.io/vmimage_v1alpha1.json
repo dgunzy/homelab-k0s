@@ -63,7 +63,6 @@
             "timeoutSeconds": {
               "default": 600,
               "description": "Seconds from the machine's power-on (its infrastructure `Ready`\ntransition) within which the guest must report every listed partition\nsealed; after that `GuestReady` is `False` with reason\n`FirstBootSealingTimeout`. A clone that cannot seal halts in its\ninitramfs and never reports anything, so this is how it is noticed.",
-              "format": "uint32",
               "maximum": 86400,
               "minimum": 60,
               "type": "integer"
@@ -155,7 +154,6 @@
           "properties": {
             "diskSizeGiB": {
               "description": "The clones' OS disk size, in GiB. `COS_PERSISTENT` fills a disk of\nthis size and does not grow on a larger one, and a smaller one cannot\nhold the image: give the classes that use this image this disk size\n(ADR-0113 Decision 4).",
-              "format": "uint32",
               "maximum": 65536,
               "minimum": 10,
               "type": "integer"
@@ -472,7 +470,6 @@
             },
             "prelaidDiskSizeGiB": {
               "description": "The disk size, in GiB, the artifact was pre-laid for (ADR-0113), when\n`spec.prelay` was honoured: `file` is then the pre-laid image and\n`checksum` its digest, computed by the builder. Omitted otherwise.",
-              "format": "uint32",
               "minimum": 0,
               "nullable": true,
               "type": "integer"

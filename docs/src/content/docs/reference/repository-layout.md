@@ -19,11 +19,13 @@ clusters/homelab/           what Flux syncs (FluxInstance spec.sync.path)
   flux-system/              the FluxInstance and the operator's self-update
   infrastructure.yaml       one Flux Kustomization per add-on, ordered with dependsOn
   apps.yaml                 workloads on the management cluster
+  workload-clusters.yaml    one Flux Kustomization per workload cluster
 infrastructure/             vendored release manifests, one directory per add-on
   cert-manager/  cluster-api/  k0smotron/  banlieue/
   hosts/                    one banlieue Provider per hypervisor host
   vm-catalog/               VM images and classes
 apps/                       workloads (today: the smoke VM)
+workload-clusters/<name>/   a workload cluster as Cluster API objects: control plane, node pools
 hack/vendor.sh              add-on version pins; re-vendors infrastructure/ and schemas/
 schemas/                    JSON schemas for CRDs not in the flux-schema catalog
 .fluxschema.yml             validation config shared by CI and local runs

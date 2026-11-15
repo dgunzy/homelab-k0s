@@ -1,0 +1,56 @@
+# Workload cluster "ai-01": the combined topology (inference and agents in one
+# cluster), defined entirely as Cluster API objects in the management cluster.
+#
+# Namespace: banlieue-system. A Cloud Hypervisor host's Provider serves only
+# its own namespace, so the machines (and the Cluster that owns them) live
+# there; banlieue-controller can already read bootstrap Secrets in it.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: ai-01
+  namespace: banlieue-system
+  labels:
+    homelab/topology: combined
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["10.244.0.0/16"]
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+  # No infrastructureRef: there is no cluster-level infrastructure to create.
+  # The control plane is pods in this cluster and machines are VMs on hosts.
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: K0smotronControlPlane
+    name: ai-01
+---
+# Hosted control plane: k0s controllers as pods in the management cluster.
+# Nodes reach it through a NodePort on mgmt-01; k0smotron writes that address
+# into the Cluster's controlPlaneEndpoint and the ai-01-kubeconfig Secret.
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: K0smotronControlPlane
+metadata:
+  name: ai-01
+  namespace: banlieue-system
+spec:
+  version: v1.37.2-k0s.1
+  replicas: 1
+  externalAddress: 10.42.0.11       # mgmt-01 (static lease, bootstrap/cluster/mgmt.env)
+  service:
+    type: NodePort
+    apiPort: 30443
+    konnectivityPort: 30132
+  # kine on SQLite instead of an etcd StatefulSet: one replica, no extra pod,
+  # and the management cluster has no storage class. hostPath keeps the
+  # datastore across pod restarts on the single management node.
+  storage:
+    type: kine
+    kine:
+      dataSourceURL: sqlite:///var/lib/k0s/db/state.db?mode=rwc&_journal=WAL&cache=shared
+  persistence:
+    type: hostPath
+    hostPath: /var/lib/k0smotron/ai-01
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi

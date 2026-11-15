@@ -1,0 +1,76 @@
+# Node pool "cpu": plain VMs for agents and cluster add-ons.
+#
+# Cluster API creates a K0sWorkerConfig (join data, rendered by k0smotron as
+# cloud-config) and a CloudHypervisorMachine per Machine; banlieue-controller
+# copies the join data into the machine's userData, and the host provider
+# boots the VM only once it has it.
+#
+# Templates are immutable by convention: to roll the pool (new image, size,
+# k0s version), add a template with the next -vN suffix and point the
+# MachineDeployment at it.
+apiVersion: infrastructure.banlieue.io/v1alpha1
+kind: CloudHypervisorMachineTemplate
+metadata:
+  name: ai-01-cpu-v1
+  namespace: banlieue-system
+spec:
+  template:
+    spec:
+      providerRef:
+        name: k0s-gpu-01
+      cpus:
+        boot: 2
+      memory:
+        sizeMiB: 3072
+      # Host-level class names (`banlieue host cloud-hypervisor install
+      # --storage-class/--network-class`), not the Provider's abstract ones.
+      storageClass: default
+      bootSource:
+        kind: image
+        image: ubuntu-24.04-server-cloudimg-amd64-20261017.raw   # seed-vm-images.sh
+      osDiskSizeGiB: 20
+      nics:
+        - name: eth0
+          networkClass: default     # br-lab
+          ipam: {}                  # DHCP
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: K0sWorkerConfigTemplate
+metadata:
+  name: ai-01-cpu-v1
+  namespace: banlieue-system
+spec:
+  template:
+    spec:
+      version: v1.37.2+k0s.1
+      args:
+        - --labels=homelab/pool=cpu
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: ai-01-cpu
+  namespace: banlieue-system
+spec:
+  clusterName: ai-01
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: ai-01-cpu
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/deployment-name: ai-01-cpu
+        homelab/pool: cpu
+    spec:
+      clusterName: ai-01
+      version: v1.37.2
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: K0sWorkerConfigTemplate
+          name: ai-01-cpu-v1
+      infrastructureRef:
+        apiGroup: infrastructure.banlieue.io
+        kind: CloudHypervisorMachineTemplate
+        name: ai-01-cpu-v1

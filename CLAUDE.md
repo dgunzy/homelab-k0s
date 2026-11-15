@@ -57,6 +57,8 @@ clusters/homelab/ Flux entry point: FluxInstance, flux-operator self-update, add
 infrastructure/   vendored add-on manifests, one dir each: cert-manager, cluster-api, k0smotron,
                   banlieue, hosts (banlieue Providers); later gpu-operator, monitoring, kueue
 apps/             workloads (today: the smoke VM)
+workload-clusters/<name>/  Cluster API definition of a workload cluster (Cluster, K0smotronControlPlane,
+                  one MachineDeployment + templates per pool); Flux: clusters/homelab/workload-clusters.yaml
 hack/vendor.sh    pins + re-vendoring of infrastructure/ and schemas/
 schemas/          JSON schemas for CRDs missing from the flux-schema catalog (banlieue)
 .github/workflows validate (flux-schema + shellcheck), publish (signed OCI artifact), docs (Pages)
@@ -79,10 +81,14 @@ notes/            gitignored personal notes: upstream (banlieue) issue drafts, s
   Providers in their own namespace; External Providers live there). Images are raw `BackingFile`s
   placed by `bootstrap/host/seed-vm-images.sh`; catalog in `infrastructure/vm-catalog/`.
 - Use `providers.banlieue.io`, not `provider`, with kubectl (Cluster API has a `Provider` kind too).
+- CAPI machines (`CloudHypervisorMachineTemplate`) name the host's own class names
+  (`storageClass: default`, `networkClass: default`), not the Provider's abstract
+  `standard`/`lab` that VMClasses use. banlieue (v0.5.8+, ADR-0129) copies each Machine's
+  bootstrap Secret into the machine's userData; the template carries none.
 
 ## Virtualization (banlieue + Cloud Hypervisor)
 
-- banlieue v0.5.7 is installed on the host by `prepare-host.sh` (`banlieue host cloud-hypervisor
+- banlieue v0.5.8 is installed on the host by `prepare-host.sh` (`banlieue host cloud-hypervisor
   install`): Cloud Hypervisor VMM + CLOUDHV.fd firmware under `/opt/banlieue`, guest template
   units, and the host provider (disabled until it gets a cluster credential).
 - The **management cluster's node** is not a banlieue object: it's built by banlieue's
@@ -110,8 +116,8 @@ notes/            gitignored personal notes: upstream (banlieue) issue drafts, s
 - Kubernetes: **latest minor everywhere** (1.37, `K0S_VERSION` in `bootstrap/cluster/mgmt.env`, kubectl
   pin in `prepare-host.sh`). Running clusters upgrade one minor at a time:
   `bootstrap-mgmt.sh upgrade` walks `K0S_UPGRADE_PATH`. Check add-on support matrices first
-  (cert-manager v1.21 officially stops at 1.36). Remove the MutatingAdmissionPolicy filter in
-  `hack/vendor.sh` only after the live cluster is on 1.36+.
+  (cert-manager v1.21 officially stops at 1.36). mgmt has run 1.37.2 since 2026-11-15, so
+  banlieue's MutatingAdmissionPolicies are vendored unfiltered.
 - k0s runs **inside the VMs**, never on the host.
 - k0s ships its **own containerd**: socket `/run/k0s/containerd.sock`, and it imports drop-in
   config from `/etc/k0s/containerd.d/*.toml`. Tools that assume `/etc/containerd/config.toml`
@@ -150,9 +156,11 @@ notes/            gitignored personal notes: upstream (banlieue) issue drafts, s
 1. ~~Hypervisor host + GPU passthrough proven with the smoke VM~~ (done 2026-11-14)
 2. ~~Management cluster (one CH VM) + Flux via **Flux Operator**; banlieue, Cluster API,
    k0smotron as add-ons; a test VirtualMachine through banlieue~~ (done 2026-11-14)
-3. Upgrade mgmt to Kubernetes 1.37 (`bootstrap-mgmt.sh upgrade`), drop the MAP filter. Then
-   workload cluster(s) via Cluster API: k0smotron-hosted control plane (k0s 1.37 with
-   Substrate's feature gates), node pools `cpu` and `gpu`; GPU Operator, CUDA test pod passing.
+3. ~~Upgrade mgmt to Kubernetes 1.37, drop the MAP filter~~ (done 2026-11-15). Then
+   workload cluster `ai-01` (`workload-clusters/ai-01/`, written; its Flux Kustomization is
+   `suspend: true` until I flip it in git): k0smotron-hosted control plane (k0s 1.37), node pools
+   `cpu` (written) and `gpu` (needs banlieue GPU passthrough, #190); GPU Operator, CUDA test
+   pod passing. Substrate's feature gates go on the control plane in phase 7.
    One combined cluster on this host; the architecture supports many (e.g. inference split
    from agent clusters). mgmt stays tiny.
 4. Node image pipeline: driver baked in, signed, SBOM, CVE gate, rolling image upgrades

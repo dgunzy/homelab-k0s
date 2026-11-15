@@ -11,7 +11,7 @@ exception is Flux, which follows its latest 2.x release.
 | Component | Version | Pinned in |
 |---|---|---|
 | Ubuntu Server | 24.04 LTS | host install |
-| banlieue (host binary; pins Cloud Hypervisor v53.0 and its firmware) | v0.5.7 | `bootstrap/host/prepare-host.sh` |
+| banlieue (host binary; pins Cloud Hypervisor v53.0 and its firmware) | v0.5.8 | `bootstrap/host/prepare-host.sh` |
 | k0sctl | v0.31.3 | `bootstrap/host/prepare-host.sh` |
 | kubectl | v1.37.2 | `bootstrap/host/prepare-host.sh` |
 | Tailscale | 1.104.7 | `bootstrap/host/prepare-host.sh` |
@@ -23,11 +23,11 @@ exception is Flux, which follows its latest 2.x release.
 | Component | Version | Pinned in |
 |---|---|---|
 | k0s (Kubernetes) | v1.37.2+k0s.1 (latest); upgrades step through v1.36.6 | `bootstrap/cluster/mgmt.env` |
-| banlieue bootstrap script | v0.5.7 | `bootstrap/cluster/bootstrap-mgmt.sh` |
+| banlieue bootstrap script | v0.5.8 | `bootstrap/cluster/bootstrap-mgmt.sh` |
 | cert-manager | v1.21.3 (latest; officially supports Kubernetes up to 1.36) | `hack/vendor.sh` |
 | Cluster API | v1.14.4 (supports Kubernetes 1.37 from v1.14.1) | `hack/vendor.sh` |
 | k0smotron | v2.3.1 (tested on k0s 1.35, 1.36, 1.37) | `hack/vendor.sh` |
-| banlieue (in-cluster) | v0.5.7 | `hack/vendor.sh` |
+| banlieue (in-cluster) | v0.5.8 | `hack/vendor.sh` |
 | Flux, Flux Operator | latest 2.x / latest | `clusters/homelab/flux-system/` |
 
 ## Tooling

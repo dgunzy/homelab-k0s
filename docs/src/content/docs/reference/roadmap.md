@@ -18,13 +18,15 @@ Each phase ends with a check that proves it works. The next phase doesn't start 
 
 ## Phase 3 in more detail
 
-- A hosted control plane (`K0smotronControlPlane`, Kubernetes 1.36+ with the feature gates
-  Agent Substrate needs) and a `cpu` `MachineDeployment` of one node.
+- ~~Upgrade the management cluster to 1.37 (`bootstrap-mgmt.sh upgrade`), one minor at a time.~~
+  Done: 1.35 → 1.36 → 1.37 in about 15 minutes, no workload changes.
+- Workload cluster `ai-01` (`workload-clusters/ai-01/`, written; its Flux Kustomization is suspended until it's switched on in git):
+  a hosted control plane (`K0smotronControlPlane`, k0s 1.37) and a `cpu` `MachineDeployment`
+  of one node, created through Cluster API with its join data delivered by banlieue.
 - Then the `gpu` pool: node VMs with the GPU passed through, the GPU Operator with the
-  driver preinstalled in the node, and the CUDA sample pod.
-- Both need node VMs created through Cluster API to receive their bootstrap data (the k0s join
-  configuration), and GPU node VMs to get a PCI device. Both are being added to banlieue
-  upstream; until then, nodes can join with a token in their cloud-init.
+  driver preinstalled in the node, and the CUDA sample pod. GPU node VMs need a PCI device on
+  their machine spec, which is being added to banlieue upstream.
+- Agent Substrate's API feature gates go on the control plane when Substrate lands (phase 7).
 
 ## Phase 4–6 notes
 

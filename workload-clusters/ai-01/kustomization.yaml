@@ -1,0 +1,7 @@
+# Workload cluster ai-01. Pools: cpu today; gpu once VFIO passthrough lands in
+# banlieue's CloudHypervisorMachine.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cluster.yaml
+  - pool-cpu.yaml

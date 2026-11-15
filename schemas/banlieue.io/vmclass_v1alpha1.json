@@ -28,7 +28,6 @@
           "properties": {
             "cpus": {
               "description": "Number of virtual CPUs.",
-              "format": "uint32",
               "maximum": 256,
               "minimum": 1,
               "type": "integer"
@@ -55,7 +54,6 @@
                   },
                   "sizeGiB": {
                     "description": "Size in GiB. For the OS disk this is the minimum size; if the image\nis larger, the provider grows accordingly.",
-                    "format": "uint32",
                     "maximum": 65536,
                     "minimum": 1,
                     "type": "integer"
@@ -78,7 +76,6 @@
             },
             "memoryMiB": {
               "description": "Memory in MiB.",
-              "format": "uint32",
               "maximum": 4194304,
               "minimum": 128,
               "type": "integer"
@@ -162,7 +159,6 @@
                             "type": "array"
                           },
                           "prefix": {
-                            "format": "uint8",
                             "maximum": 255,
                             "minimum": 0,
                             "nullable": true,
@@ -176,7 +172,6 @@
                   },
                   "mtu": {
                     "description": "Optional MTU override. Provider may ignore if unsupported.",
-                    "format": "uint32",
                     "maximum": 65535,
                     "minimum": 68,
                     "nullable": true,
