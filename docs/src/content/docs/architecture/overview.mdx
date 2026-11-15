@@ -1,0 +1,55 @@
+---
+title: Architecture overview
+description: The four layers of the platform, how they connect, and the principles behind them.
+---
+
+import ArchitectureFlow from '../../../components/flow/ArchitectureFlow';
+
+The platform has four layers. Each one is managed by the layer above it, and all of them are
+described in one Git repository.
+
+<ArchitectureFlow client:visible name="overview" />
+
+## The layers
+
+| Layer | What it is | Managed by |
+|---|---|---|
+| **Hypervisor hosts** | Bare-metal Linux running Cloud Hypervisor VMs. GPUs bound to VFIO. One routed VM subnet and one banlieue *Provider* per host. | A host prep script, once per host |
+| **Management cluster** | A small Kubernetes cluster that provisions and reconciles everything else: Flux, Cluster API, k0smotron, banlieue. | Itself (Flux), after a one-time bootstrap |
+| **Workload clusters** | One or more clusters that do the work: one combined cluster, or inference and agents split into their own clusters. Control planes run as pods in the management cluster; nodes are VMs in node pools. | Cluster API, from the repository |
+| **Workloads** | GPU inference on GPU pools; sandboxed agents on CPU pools, in the same cluster or in separate ones. | Flux, inside each workload cluster |
+
+## Principles
+
+**Nodes are cattle, created through an API.** No node is installed by hand. Workers are Cluster
+API `Machine`s backed by VMs, so replacing a broken GPU node, rolling a new node image or scaling
+a pool to zero is a change to a `MachineDeployment`.
+
+**Small management plane, hosted control planes, many clusters.** The management cluster only
+provisions and reconciles. Workload control planes are pods it runs (k0smotron), the model
+managed Kubernetes services use: control planes are cheap, isolated per cluster, and don't need
+VMs of their own. So clusters are cheap too: inference can have its own clusters, separate from
+the agent clusters, per tenant or per GPU class. See
+[Workload clusters](../workload-clusters/#as-many-workload-clusters-as-you-need).
+
+**The GPU belongs to one VM; sharing happens in Kubernetes.** A GPU is passed through whole, the
+vendor driver runs in the guest, and Kubernetes decides who uses it. See
+[GPUs, done properly](../gpu/).
+
+**Agents never hold credentials and never touch the GPU.** Agents run in gVisor sandboxes that
+are suspended when idle. They call inference over the network, and the egress gateway adds
+credentials outside the sandbox. See [Sandboxed agents](../agents/).
+
+**Everything is pinned, signed and validated.** Every manifest is schema-checked in CI, published
+as a signed OCI artifact, and only applied if the signature checks out. See
+[GitOps and supply chain](../gitops/).
+
+**One machine today, many tomorrow.** Each host is its own failure domain with its own subnet,
+so adding a host means adding a host config and a Provider, not redesigning the network. See
+[Hypervisor hosts](../hosts/).
+
+## What's built and what's next
+
+The hypervisor layer, GPU passthrough, the management cluster, GitOps and VMs on demand all run
+today. The workload cluster, GPU node pools, node images, GPU health and the agent platform are
+next. Phase by phase, with exit checks: [Roadmap and status](../../reference/roadmap/).

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Three isometric layers (hosts, clusters, workloads), matching the home page illustration. -->
+  <path d="M16 19.5 29 25.5 16 31.5 3 25.5Z" fill="#0f766e"/>
+  <path d="M16 11.5 26 16.5 16 21.5 6 16.5Z" fill="#14b8a6"/>
+  <path d="M16 3.5 23 7 16 10.5 9 7Z" fill="#5eead4"/>
+  <path d="M19.5 26.6 22 27.85 19.5 29.1 17 27.85Z" fill="#fbbf24"/>
+</svg>

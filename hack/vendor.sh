@@ -22,6 +22,7 @@ BANLIEUE_VERSION="v0.5.7"         # keep in step with prepare-host.sh (host bina
 # for these manifests, so their review is the git diff.
 BANLIEUE_COMPONENTS_SHA256="a66a933dcb0dcab040eed21e1061270f90bcaafdd7b42b811233939f99829f12"
 BANLIEUE_CRDS_SHA256="6678ca2c90c4a6d6bda5dbabc7ad3a029b913a2d3b55216a9c5452d5e932157b"
+BANLIEUE_ADMISSION_SHA256="277b285b7d6ddc7e60dcaf1c6841c648b73e4664a13bd0a96730d6ec0d21d947"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
@@ -47,17 +48,31 @@ fetch() {
   log "$(basename "$(dirname "$dest")")/$(basename "$dest") <- $url"
 }
 
-# drop_namespaces <file>: remove Namespace documents. Used where two
-# manifests applied together each declare the same Namespace, which kustomize
-# rejects as a duplicate; the kustomization declares it once instead.
-drop_namespaces() {
-  python3 -I - "$1" <<'PY'
+# drop_kinds <file> <kind>...: remove documents of the given kinds from a
+# downloaded manifest, before the provenance header is added.
+drop_kinds() {
+  python3 -I - "$@" <<'PY'
 import re, sys
-path = sys.argv[1]
+path, kinds = sys.argv[1], set(sys.argv[2:])
 docs = re.split(r"(?m)^---[ \t]*\n", open(path).read())
-keep = [d for d in docs if d.strip() and not re.search(r"(?m)^kind:[ \t]*Namespace[ \t]*$", d)]
+def kind(d):
+    m = re.search(r"(?m)^kind:[ \t]*(\S+)[ \t]*$", d)
+    return m.group(1) if m else None
+keep = [d for d in docs if d.strip() and kind(d) not in kinds]
 open(path, "w").write("---\n" + "---\n".join(keep))
 PY
+}
+
+# Two manifests applied together that each declare the same Namespace, which
+# kustomize rejects as a duplicate; the kustomization declares it once instead.
+drop_namespaces() { drop_kinds "$1" Namespace; }
+
+# MutatingAdmissionPolicy is served (admissionregistration.k8s.io/v1) only
+# from Kubernetes 1.36; on 1.35 applying it fails the whole Kustomization.
+# Delete this filter (and re-vendor) only AFTER `bootstrap-mgmt.sh upgrade`
+# has moved the management cluster to 1.36+ (target: 1.37), not before.
+drop_mutating_admission_policies() {
+  drop_kinds "$1" MutatingAdmissionPolicy MutatingAdmissionPolicyBinding
 }
 
 gh_dl() { printf 'https://github.com/%s/releases/download/%s/%s' "$1" "$2" "$3"; }
@@ -75,6 +90,11 @@ fetch "$(gh_dl k0sproject/k0smotron "$K0SMOTRON_VERSION" control-plane-component
 
 fetch "$(gh_dl firestoned/banlieue "$BANLIEUE_VERSION" infrastructure-components.yaml)" \
   "$root/infrastructure/banlieue/infrastructure-components.yaml" "$BANLIEUE_COMPONENTS_SHA256"
+# ValidatingAdmissionPolicies (banlieue ADR-0007), e.g. a VirtualMachine may
+# only reference user-data its creator could read itself (ADR-0042).
+fetch "$(gh_dl firestoned/banlieue "$BANLIEUE_VERSION" admission-policies.yaml)" \
+  "$root/infrastructure/banlieue/admission-policies.yaml" "$BANLIEUE_ADMISSION_SHA256" \
+  drop_mutating_admission_policies
 
 # banlieue isn't in the flux-schema ecosystem catalog yet: extract its CRDs'
 # schemas so CI can validate Provider, VMImage, VirtualMachine, ...

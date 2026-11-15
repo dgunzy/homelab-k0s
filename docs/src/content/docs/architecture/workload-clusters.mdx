@@ -1,0 +1,78 @@
+---
+title: Workload clusters
+description: Hosted control planes and node pools of VMs, created and replaced through Cluster API.
+---
+
+import ArchitectureFlow from '../../../components/flow/ArchitectureFlow';
+
+The clusters that do the work are described entirely as Cluster API objects in the management
+cluster. Nothing about them is installed by hand.
+
+<ArchitectureFlow client:visible name="capi" />
+
+## Hosted control plane
+
+A workload cluster's control plane is a `K0smotronControlPlane`: k0s controllers and their
+datastore running as pods in the management cluster, exposed to the nodes through a Service.
+
+- **Cheap and isolated.** A control plane costs a few hundred MiB and no VM. Each cluster has
+  its own.
+- **Independent versions.** The workload cluster's Kubernetes version and API feature gates are
+  set in its own spec, separately from the management cluster. Clusters run the latest minor
+  (1.37); Agent Substrate, for example, needs 1.36+ and certificate feature gates.
+- **Managed like the model managed-Kubernetes services use**: the provider runs the control
+  plane, the customer sees nodes.
+
+## Node pools
+
+Each node pool is a `MachineDeployment` whose machines are `CloudHypervisorMachine`s, so each
+node is a VM that banlieue creates on a host. The pools in the reference design:
+
+| Pool | Nodes | Runs |
+|---|---|---|
+| `gpu` | VMs with a GPU passed through; tainted so only GPU work lands there | GPU Operator, inference servers |
+| `cpu` | Plain VMs | Agent Substrate, its datastore and object storage, cluster add-ons |
+
+What a node pool gives you:
+
+- **Replacement:** delete a `Machine` (or let a `MachineHealthCheck` do it) and a new VM joins.
+- **Rolling upgrades:** change the machine template (a new node image, more memory) and the
+  pool rolls node by node.
+- **Scale to zero:** `replicas: 0` on the GPU pool releases the GPU and its pinned memory when
+  nobody's using it.
+- **Spread:** machines can be placed across hosts (failure domains).
+
+## As many workload clusters as you need
+
+A workload cluster is just a set of objects in the management cluster: a `Cluster`, its
+`K0smotronControlPlane`, and one `MachineDeployment` per node pool. Another cluster is the same
+objects under another name. Control planes are pods, so each extra cluster costs a few hundred
+MiB, not a VM, and they all share the same hosts.
+
+That makes the cluster boundary a design choice rather than a capacity one.
+
+<ArchitectureFlow client:visible name="clusters" />
+
+Common topologies:
+
+| Topology | Clusters | When |
+|---|---|---|
+| **Combined** | one cluster with `gpu` and `cpu` pools | Small footprint, one team. The example deployment starts here. |
+| **Inference split out** | an **inference** cluster (GPU pools only) and an **agents** cluster (CPU pools, Agent Substrate) | GPUs are shared by several consumers, or the inference platform has its own upgrade cadence, Kubernetes version, scheduler (Kueue, KAI, DRA) and on-call. Agents call inference across clusters through the egress gateway. |
+| **Per tenant or environment** | one cluster per team, customer or stage, each with its own pools | Hard isolation of control planes, RBAC and upgrades; a shared inference cluster can serve them all. |
+| **Per GPU class** | one inference cluster per GPU type or generation | Different drivers, node images or sharing modes per hardware generation. |
+
+What changes between them is only *what calls what across a cluster boundary*: an agents
+cluster reaches an inference cluster through an exposed, authenticated inference endpoint
+(Gateway API, mTLS or a token added by the egress gateway) instead of a cluster-local Service.
+The management plane, the hosts and the GitOps flow stay the same. Each cluster gets its own
+`clusters/<name>/` path in the repository and its own Flux.
+
+The reference design is written as one combined cluster because that's what one host runs
+today; splitting inference out is the first step when there's a second GPU host.
+
+## Status
+
+The hosted control plane and the `cpu` pool are next on the [roadmap](../../reference/roadmap/).
+Creating node VMs through Cluster API needs banlieue to deliver each machine's bootstrap data
+to its VM, which is being added upstream.

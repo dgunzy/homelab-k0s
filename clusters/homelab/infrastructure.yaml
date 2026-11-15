@@ -104,3 +104,21 @@ spec:
   # Not wait: a Provider only turns Ready once the host's process connects,
   # which is a manual step (bootstrap-mgmt.sh provider).
   wait: false
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vm-catalog
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: banlieue
+  interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+  path: ./infrastructure/vm-catalog
+  prune: true
+  wait: true

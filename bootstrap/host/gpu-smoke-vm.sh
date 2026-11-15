@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Throwaway Cloud Hypervisor VM with the RTX 2070 passed through: proves VFIO
+# Throwaway Cloud Hypervisor VM with the host's GPU passed through: proves VFIO
 # end to end (host binding -> VMM -> guest driver -> nvidia-smi) before any
 # k0s node depends on it. Deliberately NOT banlieue and NOT a k0s node: one
 # plain VMM process, so a failure here is about passthrough and nothing else.
@@ -11,7 +11,7 @@
 #   sudo ./bootstrap/host/gpu-smoke-vm.sh down     # stop it, keep the disk
 #   sudo ./bootstrap/host/gpu-smoke-vm.sh destroy  # stop it and delete its disk
 #
-# From another device, through the host:  ssh -J ops@k0s-gpu-01.local ubuntu@10.42.0.10
+# From another device: ssh ubuntu@<bridge-prefix>.10 (via the subnet route) or ssh -J <host> ubuntu@...
 set -euo pipefail
 
 # --- Pins ---------------------------------------------------------------------
@@ -19,15 +19,23 @@ set -euo pipefail
 IMAGE_URL="https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img"
 IMAGE_SHA256="04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94"
 
+# GPU slot and VM network come from the host config (prepare-host.sh's).
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOST_CONFIG="${HOST_CONFIG:-$script_dir/hosts/$(hostname -s).env}"
+[[ -f "$HOST_CONFIG" ]] || { echo "no host config at $HOST_CONFIG" >&2; exit 1; }
+# shellcheck source=hosts/k0s-gpu-01.env
+source "$HOST_CONFIG"
+[[ -n "${GPU_PCI_SLOT:-}" ]] || { echo "$HOST_CONFIG names no GPU (GPU_PCI_SLOT)" >&2; exit 1; }
+
 NAME="gpu-smoke"
-GPU="0000:01:00.0"            # VGA function only; .1-.3 stay parked on vfio-pci
+GPU="$GPU_PCI_SLOT.0"         # the VGA function; the others stay parked on vfio-pci
 MAC="52:54:00:42:00:0a"
-IP="10.42.0.10"               # static, outside br-lab's DHCP pool (.100-.199)
-GATEWAY="10.42.0.1"
-BRIDGE="br-lab"
+GATEWAY="${LAB_ADDR%/*}"
+IP="${GATEWAY%.*}.10"         # static, below the bridge's DHCP pool (.100-.199)
+BRIDGE="$LAB_BRIDGE"
 TAP="tap-$NAME"
 CPUS=4
-MEM_MB=6144                   # all of it is pinned by VFIO; see docs/02
+MEM_MB=6144                   # all of it is pinned by VFIO
 DISK_GB=30
 
 CH="${CH:-/usr/local/bin/cloud-hypervisor}"
@@ -41,7 +49,6 @@ UNIT="$NAME"
 log() { printf '==> %s\n' "$*" >&2; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ssh_opts=(-i "$DIR/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
           -o LogLevel=ERROR -o ConnectTimeout=5)
 
@@ -151,7 +158,7 @@ up() {
   log "Booting $NAME: ${CPUS} vCPU, ${MEM_MB} MiB (pinned), GPU $GPU"
   # Root and unsandboxed on purpose: this only proves passthrough. The real
   # node unit runs as an unprivileged user and needs DeviceAllow for
-  # /dev/vfio/* and LimitMEMLOCK=infinity (docs/02).
+  # /dev/vfio/* and LimitMEMLOCK=infinity.
   systemd-run --quiet --unit="$UNIT" --collect \
     "$CH" \
       --api-socket "path=$SOCK" \

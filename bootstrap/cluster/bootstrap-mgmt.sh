@@ -6,6 +6,7 @@
 #   ./bootstrap/cluster/bootstrap-mgmt.sh flux      # Flux Operator + this repo's FluxInstance
 #   ./bootstrap/cluster/bootstrap-mgmt.sh provider  # connect this host's banlieue provider to the cluster
 #   ./bootstrap/cluster/bootstrap-mgmt.sh all       # the three above, in order
+#   ./bootstrap/cluster/bootstrap-mgmt.sh upgrade   # step a running cluster to K0S_VERSION, one minor at a time
 #   ./bootstrap/cluster/bootstrap-mgmt.sh status
 #   ./bootstrap/cluster/bootstrap-mgmt.sh destroy   # delete mgmt-01 and its disk (asks first)
 #
@@ -128,6 +129,38 @@ step_provider() {
   kubectl -n banlieue-system get providers.banlieue.io "$PROVIDER_NAME" -o wide
 }
 
+# version_lt <a> <b>: a is older than b, comparing the Kubernetes version only
+# (v1.35.10+k0s and 1.36.6+k0s.0 compare as 1.35.10 and 1.36.6).
+version_lt() {
+  local a="${1#v}" b="${2#v}"
+  a="${a%%+*}"; b="${b%%+*}"
+  [[ "$a" != "$b" && "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" == "$a" ]]
+}
+
+server_version() { kubectl version -o json | jq -r .serverVersion.gitVersion; }
+
+# A control plane can't skip Kubernetes minors, so a running cluster steps
+# through K0S_UPGRADE_PATH. Each step regenerates the k0sctl config at that
+# version and applies it; k0sctl upgrades the node in place.
+step_upgrade() {
+  local current v
+  current="$(server_version)"
+  log "Cluster is at $current; target ${K0S_VERSION}"
+  for v in $K0S_UPGRADE_PATH; do
+    if ! version_lt "$current" "$v"; then
+      log "  skip $v (already at or past it)"
+      continue
+    fi
+    log "Upgrading to k0s $v"
+    K0S_VERSION="$v" run_banlieue config
+    K0S_VERSION="$v" run_banlieue apply
+    kubectl wait node --all --for=condition=Ready --timeout=10m
+    current="$(server_version)"
+    log "  now at $current"
+  done
+  kubectl get nodes -o wide
+}
+
 step_status() {
   sudo systemctl --no-pager --lines=0 status "k0s-vm-$VM_PREFIX-01.service" || true
   kubectl get nodes -o wide || true
@@ -147,7 +180,8 @@ case "${1:-}" in
   flux) step_flux ;;
   provider) step_provider ;;
   all) step_node; step_flux; step_provider ;;
+  upgrade) step_upgrade ;;
   status) step_status ;;
   destroy) step_destroy ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,14p' "$0"; exit 1 ;;
 esac

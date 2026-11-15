@@ -1,0 +1,18 @@
+# Ubuntu 24.04 cloud image (release 20261017), placed on each Cloud Hypervisor
+# host as a raw file by bootstrap/host/seed-vm-images.sh, which verifies it
+# against Ubuntu's published SHA-256. Cluster-scoped: every VM names it.
+# A new image release is a new VMImage, never an edit of this one.
+apiVersion: banlieue.io/v1alpha1
+kind: VMImage
+metadata:
+  name: ubuntu-24.04-20261017
+spec:
+  osFamily: linux
+  osDistribution: ubuntu
+  osVersion: "24.04"
+  architecture: amd64
+  guestAgent: cloud-init
+  sources:
+    - providerClass: cloud-hypervisor
+      kind: BackingFile
+      ref: ubuntu-24.04-server-cloudimg-amd64-20261017.raw

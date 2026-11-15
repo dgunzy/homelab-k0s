@@ -1,0 +1,93 @@
+---
+// "Built on" strip for the home page: the projects the platform is made of.
+// Greyscale until hovered, each linking to its project.
+import kubernetes from '../assets/logos/kubernetes.svg?url';
+import flux from '../assets/logos/flux.svg?url';
+import clusterApi from '../assets/logos/cluster-api.svg?url';
+import k0s from '../assets/logos/k0s.svg?url';
+import certManager from '../assets/logos/cert-manager.svg?url';
+import gvisor from '../assets/logos/gvisor.svg?url';
+import substrate from '../assets/logos/agent-substrate.svg?url';
+import hypervisor from '../assets/logos/hypervisor.svg?url';
+import vm from '../assets/logos/vm.svg?url';
+
+const items = [
+  { name: 'Kubernetes', logo: kubernetes, href: 'https://kubernetes.io' },
+  { name: 'Flux', logo: flux, href: 'https://fluxcd.io' },
+  { name: 'Cluster API', logo: clusterApi, href: 'https://cluster-api.sigs.k8s.io' },
+  { name: 'k0s / k0smotron', logo: k0s, href: 'https://k0sproject.io' },
+  { name: 'cert-manager', logo: certManager, href: 'https://cert-manager.io' },
+  { name: 'Cloud Hypervisor', logo: hypervisor, href: 'https://www.cloudhypervisor.org', mono: true },
+  { name: 'banlieue', logo: vm, href: 'https://github.com/firestoned/banlieue', mono: true },
+  { name: 'gVisor', logo: gvisor, href: 'https://gvisor.dev' },
+  { name: 'Agent Substrate', logo: substrate, href: 'https://github.com/agent-substrate/substrate' },
+];
+---
+
+<div class="logo-strip not-content" aria-label="Projects the platform is built on">
+  {
+    items.map((i) => (
+      <a href={i.href} class="logo-item" title={i.name}>
+        {i.mono ? (
+          <span class="logo-img logo-mono" style={`mask-image:url("${i.logo}");-webkit-mask-image:url("${i.logo}")`} />
+        ) : (
+          <img class="logo-img" src={i.logo} alt="" loading="lazy" />
+        )}
+        <span class="logo-name">{i.name}</span>
+      </a>
+    ))
+  }
+</div>
+
+<style>
+  .logo-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+  .logo-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+    text-decoration: none;
+    color: var(--sl-color-gray-2);
+    font-size: 0.85rem;
+    transition: border-color 0.15s, color 0.15s, transform 0.15s;
+  }
+  .logo-item:hover {
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-white);
+    transform: translateY(-1px);
+  }
+  .logo-img {
+    flex: none;
+    width: 1.6rem;
+    height: 1.6rem;
+    object-fit: contain;
+    filter: grayscale(1) opacity(0.75);
+    transition: filter 0.15s;
+  }
+  .logo-item:hover .logo-img {
+    filter: none;
+  }
+  .logo-mono {
+    display: block;
+    background-color: var(--sl-color-gray-3);
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+  }
+  .logo-item:hover .logo-mono {
+    background-color: var(--sl-color-accent);
+  }
+  .logo-name {
+    white-space: nowrap;
+  }
+</style>

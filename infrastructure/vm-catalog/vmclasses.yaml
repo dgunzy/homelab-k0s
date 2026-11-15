@@ -1,0 +1,22 @@
+# Hardware shapes VMs pick from. Class names, not sizes, appear in VM specs.
+# Storage "standard" and network "lab" are the classes the hosts' Providers
+# map to their own disks and bridges (infrastructure/hosts/).
+apiVersion: banlieue.io/v1alpha1
+kind: VMClass
+metadata:
+  name: small
+spec:
+  hardware:
+    cpus: 1
+    memoryMiB: 1024
+    disks:
+      - name: os
+        sizeGiB: 10
+        storageClass: standard
+        provisioning: thin
+  network:
+    interfaces:
+      - name: eth0
+        networkClass: lab
+        ipam: {}          # DHCP from br-lab
+  firmware: efi

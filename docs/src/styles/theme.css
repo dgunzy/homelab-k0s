@@ -1,0 +1,90 @@
+/* A quiet slate base with a teal accent; Space Grotesk for headings. */
+:root {
+  --sl-font: 'Inter Variable', system-ui, sans-serif;
+  --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  --heading-font: 'Space Grotesk Variable', var(--sl-font);
+  --sl-content-width: 50rem;
+}
+
+/* Dark (default) */
+:root {
+  --sl-color-accent-low: #072a28;
+  --sl-color-accent: #14b8a6;
+  --sl-color-accent-high: #99f6e4;
+  --sl-color-white: #f1f5f9;
+  --sl-color-gray-1: #e2e8f0;
+  --sl-color-gray-2: #cbd5e1;
+  --sl-color-gray-3: #94a3b8;
+  --sl-color-gray-4: #64748b;
+  --sl-color-gray-5: #334155;
+  --sl-color-gray-6: #1e293b;
+  --sl-color-black: #0b1120;
+}
+
+/* Light */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent: #0f766e;
+  --sl-color-accent-high: #134e4a;
+  --sl-color-white: #0f172a;
+  --sl-color-gray-1: #1e293b;
+  --sl-color-gray-2: #334155;
+  --sl-color-gray-3: #475569;
+  --sl-color-gray-4: #94a3b8;
+  --sl-color-gray-5: #cbd5e1;
+  --sl-color-gray-6: #f1f5f9;
+  --sl-color-gray-7: #f8fafc;
+  --sl-color-black: #ffffff;
+}
+
+h1, h2, h3, h4,
+.sl-markdown-content :is(h1, h2, h3, h4),
+.site-title,
+.hero h1 {
+  font-family: var(--heading-font);
+  letter-spacing: -0.015em;
+}
+
+.site-title { font-weight: 600; }
+
+
+/* Status pills used in tables: <span class="pill done">done</span> */
+.pill {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid var(--sl-color-gray-5);
+}
+.pill.done { color: #10b981; border-color: #10b98166; }
+.pill.next { color: #f59e0b; border-color: #f59e0b66; }
+.pill.planned { color: var(--sl-color-gray-3); }
+
+/* Home page hero illustration (inline SVG): let it use the column. */
+.hero .hero-html {
+  width: 100%;
+  max-width: 36rem;
+}
+.hero .hero-html svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Cards: one accent instead of Starlight's rotating rainbow, with a hover lift. */
+.card.card,
+.card.card:nth-child(n) {
+  --sl-card-border: var(--sl-color-accent);
+  --sl-card-bg: var(--sl-color-accent-low);
+  border-radius: 0.9rem;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.card.card:hover {
+  border-color: color-mix(in srgb, var(--sl-color-accent) 55%, var(--sl-color-gray-5));
+  transform: translateY(-2px);
+}
+.card .icon {
+  color: var(--sl-color-accent-high);
+}

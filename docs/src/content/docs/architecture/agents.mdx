@@ -1,0 +1,78 @@
+---
+title: Sandboxed agents
+description: Agents as suspended-and-resumed actors in gVisor sandboxes, with credentials and model access outside the sandbox.
+---
+
+import ArchitectureFlow from '../../../components/flow/ArchitectureFlow';
+
+AI agents are a bad fit for one pod per agent: there are many of them, they're idle most of
+the time, and they run code nobody reviewed. The platform runs them on
+[Agent Substrate](https://github.com/agent-substrate/substrate) (CNCF Sandbox) and keeps
+model inference in a separate node pool.
+
+<ArchitectureFlow client:visible name="agents" />
+
+## Actors on warm workers
+
+Each agent session is an **actor** with its own filesystem, memory and network rules. Actors
+are multiplexed onto a small pool of pre-started **worker** pods:
+
+- When an actor goes idle, Substrate **snapshots** its memory and filesystem to object storage
+  and frees the worker.
+- When a request arrives for a suspended actor, the **router** holds it while a worker
+  **restores** the actor (in well under a second), then forwards it.
+- Many more actors than workers: density comes from agents being idle, not from packing them
+  tighter.
+
+## Sandboxing
+
+Every actor runs in a sandbox; plain containers aren't an option.
+
+- **gVisor** (`runsc`) intercepts the actor's system calls in a user-space kernel. It needs no
+  KVM, so it runs inside node VMs. Substrate ships `runsc` itself, pinned by checksum, so nothing
+  is installed on the nodes.
+- **MicroVMs** (Kata on Cloud Hypervisor) are the stronger option, but need `/dev/kvm` inside
+  the node, which means nested virtualization when nodes are VMs. Use them on bare-metal nodes.
+
+## Credentials stay outside
+
+Actors never hold API keys or cloud tokens. Their outbound traffic goes through the **egress
+gateway**, which applies policy and adds credentials to approved requests on the way out. A
+prompt-injected or compromised agent has nothing to exfiltrate. Each actor also gets a
+short-lived SPIFFE identity, so the gateway knows exactly who is calling.
+
+## Inference is a separate service
+
+Agents don't use the GPU directly: Substrate doesn't pass devices to actors, and sharing a small
+GPU across sandboxes would waste it. Instead:
+
+- The **`gpu` pool** runs an inference server with an OpenAI-compatible API.
+- The **`cpu` pool** runs Substrate and its actors.
+- Agents call the model **through the egress gateway**, which adds the API key and enforces
+  which models and endpoints each agent may use.
+
+The GPU stays dedicated to serving models, and each side scales and upgrades independently.
+That is the shape managed agent and inference platforms use.
+
+The two sides can live in one workload cluster (separate node pools) or in **separate
+clusters**: an inference cluster serving several agent clusters. Nothing in the agent design
+changes, only the endpoint the egress gateway forwards to. See
+[topologies](../workload-clusters/#as-many-workload-clusters-as-you-need).
+
+## Requirements on the workload cluster
+
+Substrate supports the latest two Kubernetes minors and needs the `ClusterTrustBundle`,
+`ClusterTrustBundleProjection` and `PodCertificateRequest` feature gates (and
+`certificates.k8s.io/v1beta1`). With a hosted control plane those are set in the workload
+cluster's own spec. It also needs PostgreSQL and S3-compatible object storage, which run in the
+`cpu` pool.
+
+## Alternative: a VM per agent
+
+banlieue's `VirtualMachinePool` and `VirtualMachineClaim` give each agent a full VM from a warm
+pool instead. That's stronger isolation at a much higher cost per agent, and a useful
+comparison to run on the same hosts.
+
+## Status
+
+Planned. See the [roadmap](../../reference/roadmap/).

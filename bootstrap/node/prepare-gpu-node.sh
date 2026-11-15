@@ -2,7 +2,7 @@
 # Guest prep for a GPU worker VM (Ubuntu 24.04): pinned NVIDIA driver +
 # nouveau blacklist. The GPU is passed through to this VM with VFIO, so to
 # the guest it is an ordinary PCIe device and the driver installs as it
-# would on bare metal. The hypervisor host runs no NVIDIA driver (docs/02).
+# would on bare metal. The hypervisor host runs no NVIDIA driver.
 #
 # Run inside the VM:  sudo bash prepare-gpu-node.sh
 # (bootstrap/host/gpu-smoke-vm.sh verify copies it in and runs it.)

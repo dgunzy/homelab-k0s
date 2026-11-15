@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
-# Host prep for k0s-gpu-01 as a KVM hypervisor (docs/02-virtualized-gpu-cluster.md).
+# Prepare a bare-metal Linux host as a hypervisor for the platform: Cloud
+# Hypervisor VMs managed by banlieue, optionally with a GPU passed through.
+# Nothing on the host runs Kubernetes; the k0s nodes are VMs on it.
 #
-# The host runs no k0s and no NVIDIA driver. The k0s nodes are Cloud
-# Hypervisor VMs on this host, and the RTX 2070 is handed to one of them
-# with VFIO. This script prepares that:
-#   - VFIO: IOMMU on, all four GPU functions bound to vfio-pci at boot
-#   - br-lab: a routed bridge (10.42.0.0/24) with DHCP and NAT, because a
-#     Wi-Fi uplink can't be bridged
+#   - VFIO (if the host config names a GPU): IOMMU on, every function of the
+#     GPU's IOMMU group bound to vfio-pci at boot; no vendor driver on the host
+#   - a routed VM bridge with DHCP, DNS and NAT (works behind Wi-Fi too)
 #   - banlieue's Cloud Hypervisor host install (VMM, firmware, guest units)
-#   - k0sctl, tailscale (subnet router for br-lab), host packages
-#   - dual-boot GRUB menu and reboot-to-windows (unchanged)
+#   - k0sctl, kubectl, optional Tailscale subnet router, host packages
+#   - optional dual-boot helpers (helpers/dual-boot)
 #
-# Run on the node after the autoinstall:  sudo ./bootstrap/host/prepare-host.sh
+# Per-host settings live in bootstrap/host/hosts/<short-hostname>.env.
+#   sudo ./bootstrap/host/prepare-host.sh
+#   sudo HOST_CONFIG=bootstrap/host/hosts/other.env ./bootstrap/host/prepare-host.sh
 # Idempotent: safe to re-run; it only changes what isn't already in place.
 set -euo pipefail
 
-# --- Pins ---------------------------------------------------------------------
-# GPU functions on 01:00 (lspci -nn -s 01:00): VGA, HDMI audio, USB-C xHCI,
-# USB-C UCSI. All four sit in IOMMU group 1 with the CPU's x16 root port. A
-# group is the smallest unit the IOMMU can isolate, so every endpoint in it
-# must leave its host driver before any of them can go to a VM.
-GPU_PCI_IDS="10de:1f02,10de:10f9,10de:1ada,10de:1adb"
-GPU_PCI_SLOT="0000:01:00"
-
+# --- Pins (the same on every host) --------------------------------------------
 BANLIEUE_VERSION="0.5.7"
 # From the release's checksums.sha256 (signed with the release).
 BANLIEUE_SHA256="996f5c3a46c5fab38de53c97de9c0ea432292f74376b3a29ebd96014d8b9774a"
@@ -30,34 +24,46 @@ K0SCTL_VERSION="0.31.3"
 K0SCTL_SHA256="c055473be106deead180594f2610b8cca5fec97e69a710c92c1f26088bbd2255"
 TAILSCALE_VERSION="1.104.7"
 # Same minor as the cluster's k0s (bootstrap/cluster/mgmt.env).
-KUBECTL_VERSION="1.35.10"
-KUBECTL_SHA256="c49a28f1f4efc4d475ed05f47f2ce8e563bf7bef69ed77fe1b924ea6d83b6327"
+KUBECTL_VERSION="1.37.2"
+KUBECTL_SHA256="c04487523e7aa7d1493f7808174c899db93d7a9cf57531420cd76b9bd415f8f4"
 
-# The VM network. The host is the router: 10.42.0.1 on br-lab.
-LAB_BRIDGE="br-lab"
-LAB_ADDR="10.42.0.1/24"
-LAB_CIDR="10.42.0.0/24"
-
-# banlieue's Cloud Hypervisor host. One Provider per host (banlieue ADR-0060).
-PROVIDER_NAME="k0s-gpu-01"
 CH_STORAGE="/var/lib/banlieue/ch"
-# Ceiling for banlieue-managed guests (sandboxes), NOT the k0s node VMs,
-# which run in banlieue-nodes.slice. Small until the RAM upgrade.
-GUEST_MEMORY_MAX="2G"
 
 log() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 if [[ $EUID -ne 0 ]]; then echo "run as root (sudo)" >&2; exit 1; fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$script_dir/../.." && pwd)"
 REBOOT_NEEDED=0
 
+# --- Host config ----------------------------------------------------------------
+HOST_CONFIG="${HOST_CONFIG:-$script_dir/hosts/$(hostname -s).env}"
+[[ -f "$HOST_CONFIG" ]] || die "no host config at $HOST_CONFIG (copy one in bootstrap/host/hosts/)"
+# shellcheck source=hosts/k0s-gpu-01.env
+source "$HOST_CONFIG"
+for v in PROVIDER_NAME LAB_BRIDGE LAB_ADDR LAB_CIDR GUEST_MEMORY_MAX; do
+  [[ -n "${!v:-}" ]] || die "$HOST_CONFIG must set $v"
+done
+GPU_PCI_IDS="${GPU_PCI_IDS:-}"
+IOMMU="${IOMMU:-intel}"
+DUAL_BOOT="${DUAL_BOOT:-false}"
+TAILSCALE_SUBNET_ROUTER="${TAILSCALE_SUBNET_ROUTER:-false}"
+gpu_passthrough() { [[ -n "$GPU_PCI_IDS" ]]; }
+if gpu_passthrough; then
+  [[ -n "${GPU_PCI_SLOT:-}" ]] || die "$HOST_CONFIG sets GPU_PCI_IDS but not GPU_PCI_SLOT"
+  [[ "$IOMMU" == intel || "$IOMMU" == amd ]] || die "IOMMU must be intel or amd, not '$IOMMU'"
+fi
+log "Host config: $HOST_CONFIG (provider $PROVIDER_NAME, GPU passthrough: $(gpu_passthrough && echo yes || echo no))"
+
 # --- Preflight: firmware virtualization ---------------------------------------
-# VT-x gives the CPU's KVM support (/dev/kvm). VT-d is the IOMMU, which
-# remaps DMA from a device so it can only reach its own VM's memory. Both are
-# BIOS settings (Advanced > CPU Configuration, Advanced > System Agent).
-[[ -e /dev/kvm ]] || die "/dev/kvm missing: enable Intel Virtualization Technology (VT-x) in the BIOS"
-compgen -G '/sys/class/iommu/dmar*' >/dev/null || die "no DMAR unit: enable VT-d in the BIOS"
+# VT-x / AMD-V gives the CPU's KVM support (/dev/kvm). VT-d / AMD-Vi is the
+# IOMMU, which remaps DMA from a device so it can only reach its own VM's
+# memory; needed only for passthrough. Both are firmware (BIOS) settings.
+[[ -e /dev/kvm ]] || die "/dev/kvm missing: enable CPU virtualization (VT-x / AMD-V) in the firmware"
+if gpu_passthrough; then
+  compgen -G '/sys/class/iommu/*' >/dev/null || die "no IOMMU: enable VT-d / AMD-Vi in the firmware"
+fi
 if grep -qw hypervisor /proc/cpuinfo; then die "this is a VM; the host must be bare metal"; fi
 
 if command -v mokutil >/dev/null && mokutil --sb-state 2>/dev/null | grep -q enabled; then
@@ -106,8 +112,10 @@ if [[ "${SSHD_CHANGED:-0}" == 1 ]]; then
   systemctl reload ssh       # existing sessions survive a reload
 fi
 
-# --- No NVIDIA driver on the host ---------------------------------------------
-# The driver lives in the GPU VM (bootstrap/node/prepare-gpu-node.sh). A host
+# --- GPU passthrough (VFIO) ---------------------------------------------------
+if gpu_passthrough; then
+# No NVIDIA driver on the host:
+# the driver lives in the GPU VM (bootstrap/node/prepare-gpu-node.sh). A host
 # driver would race vfio-pci for the card. Don't purge automatically.
 if dpkg -l 'nvidia-*' 'linux-modules-nvidia-*' 2>/dev/null | grep -q '^ii'; then
   log "WARNING: NVIDIA packages are installed on the host. Remove them:"
@@ -123,11 +131,12 @@ if [[ "$(cat "$NOUVEAU_CONF" 2>/dev/null)" != "$want" ]]; then
   INITRAMFS_NEEDED=1
 fi
 
-# --- VFIO: bind the GPU to vfio-pci at boot -----------------------------------
-# vfio-pci claims the four functions by vendor:device ID. The softdeps make
+# Bind the GPU to vfio-pci at boot.
+# vfio-pci claims every function by vendor:device ID. The softdeps make
 # sure it loads before the drivers that would otherwise claim them
 # (snd_hda_intel, xhci_pci and i2c_nvidia_gpu also drive the Intel chipset's
-# own devices, so they can't be blacklisted, only ordered).
+# own devices, so they can't be blacklisted, only ordered). The softdeps name
+# NVIDIA's drivers; for another vendor's GPU add its driver here.
 # disable_vga=1: opt the card out of legacy VGA arbitration; the host has no
 # use for it.
 VFIO_CONF=/etc/modprobe.d/vfio.conf
@@ -157,24 +166,26 @@ if [[ "${INITRAMFS_NEEDED:-0}" == 1 ]]; then
   REBOOT_NEEDED=1
 fi
 
-# Kernel: intel_iommu=on turns on DMA remapping (Ubuntu's kernel already
-# does, but say so explicitly). iommu=pt keeps host-owned devices on an
-# identity mapping, so only passed-through devices pay translation cost.
+# Kernel: <vendor>_iommu=on turns on DMA remapping (Ubuntu's kernel already
+# does for Intel, but say so explicitly). iommu=pt keeps host-owned devices
+# on an identity mapping, so only passed-through devices pay translation cost.
 GRUB_VFIO=/etc/default/grub.d/91-homelab-vfio.cfg
-want_grub='GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} intel_iommu=on iommu=pt"'
+want_grub='GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} '"${IOMMU}"'_iommu=on iommu=pt"'
 if [[ "$(cat "$GRUB_VFIO" 2>/dev/null)" != "$want_grub" ]]; then
-  log "Adding intel_iommu=on iommu=pt to the kernel command line"
+  log "Adding ${IOMMU}_iommu=on iommu=pt to the kernel command line"
   printf '%s\n' "$want_grub" > "$GRUB_VFIO"
   GRUB_NEEDED=1
 fi
+fi  # gpu_passthrough
 
-# --- Dual-boot: GRUB menu -----------------------------------------------------
+# --- Dual-boot (optional, DUAL_BOOT=true) ------------------------------------
+if [[ "$DUAL_BOOT" == true ]]; then
 # Show the GRUB menu for 10s with a Windows entry; Ubuntu boots if untouched,
 # so unattended reboots/power cuts still come back as a cluster host.
 # os-prober only *reads* the Windows ESP to build the menu entry.
 # RECORDFAIL: after an unclean shutdown Ubuntu otherwise waits at the menu
 # (no timeout on some setups), which would strand a headless host.
-# The menu still shows on the 2070: vfio-pci only takes it later in boot.
+# The menu still shows on a passed-through GPU: vfio-pci takes it later in boot.
 if ! dpkg-query -W -f='${Status}' os-prober 2>/dev/null | grep -q 'install ok installed'; then
   log "Installing os-prober"
   apt-get install -y os-prober
@@ -186,21 +197,23 @@ if [[ "$(cat "$GRUB_DROPIN" 2>/dev/null)" != "$want_grub" ]]; then
   printf '%s\n' "$want_grub" > "$GRUB_DROPIN"
   GRUB_NEEDED=1
 fi
+grep -q "Windows Boot Manager" /boot/grub/grub.cfg \
+  || log "WARNING: os-prober did not add a Windows entry to GRUB (the firmware boot menu still works)"
+# `sudo reboot-to-windows` boots Windows once; the next reboot returns to Linux.
+install -m 0755 "$repo/helpers/dual-boot/reboot-to-windows.sh" /usr/local/bin/reboot-to-windows
+fi  # DUAL_BOOT
 if [[ "${GRUB_NEEDED:-0}" == 1 ]]; then
   update-grub
   REBOOT_NEEDED=1
 fi
-grep -q "Windows Boot Manager" /boot/grub/grub.cfg \
-  || log "WARNING: os-prober did not add a Windows entry to GRUB (F8 still works)"
 
-# `sudo reboot-to-windows` boots Windows once; the next reboot returns to Linux.
-install -m 0755 "$script_dir/reboot-to-windows.sh" /usr/local/bin/reboot-to-windows
-
-# --- br-lab: routed VM network ------------------------------------------------
-# A Wi-Fi client can't join a Linux bridge (the access point drops frames
-# from MACs that never associated), so VMs can't sit on the home LAN. Instead
-# the host routes: br-lab has 10.42.0.1/24, hands out DHCP, and NATs VM
-# traffic out of wlo1. systemd-networkd does all three. These files live in
+# --- VM network: a routed bridge ---------------------------------------------
+# VMs get their own subnet behind the host instead of sharing the LAN: it
+# works with any uplink (a Wi-Fi client can't join a Linux bridge, the access
+# point drops frames from MACs that never associated), and every host gets a
+# non-overlapping subnet, so hosts scale out by routing, not by stretching
+# one L2 segment. The host holds LAB_ADDR, hands out DHCP, and NATs VM
+# traffic out of its uplink. systemd-networkd does all three. These files live in
 # /etc/systemd/network beside netplan's generated ones in /run; netplan
 # doesn't manage this bridge, and reloading doesn't touch wlo1.
 # ConfigureWithoutCarrier: an empty bridge has no carrier until a VM's tap
@@ -213,8 +226,8 @@ Name=$LAB_BRIDGE
 Kind=bridge
 EOF
 )
-# DNS for VMs: the host's resolved, via an extra stub listener on 10.42.0.1,
-# so VMs follow whatever DNS the Wi-Fi network hands the host.
+# DNS for VMs: the host's resolved, via an extra stub listener on the bridge
+# address, so VMs follow whatever DNS the uplink hands the host.
 want_network=$(cat <<EOF
 [Match]
 Name=$LAB_BRIDGE
@@ -257,9 +270,12 @@ if [[ "$(cat "$RESOLVED_DROPIN" 2>/dev/null)" != "$want_resolved" ]]; then
   systemctl restart systemd-resolved
 fi
 
-# --- Tailscale: reach br-lab from other devices -------------------------------
-# The home router (a mesh behind the ISP router) can't hold a static route to
-# 10.42.0.0/24, so this host advertises it as a Tailscale subnet route.
+# --- Tailscale (optional, TAILSCALE_SUBNET_ROUTER=true) -----------------------
+# Reaching the VM subnet from other machines needs a route to it. Where the
+# LAN router can't hold one (here: a mesh behind the ISP router), the host
+# advertises LAB_CIDR as a Tailscale subnet route instead. It also connects
+# the subnets of several hosts to each other.
+if [[ "$TAILSCALE_SUBNET_ROUTER" == true ]]; then
 if [[ "$(dpkg-query -W -f='${Version}' tailscale 2>/dev/null)" != "$TAILSCALE_VERSION" ]]; then
   log "Installing tailscale $TAILSCALE_VERSION"
   curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
@@ -271,6 +287,7 @@ if [[ "$(dpkg-query -W -f='${Version}' tailscale 2>/dev/null)" != "$TAILSCALE_VE
   apt-get install -y --allow-downgrades "tailscale=$TAILSCALE_VERSION"
 fi
 apt-mark hold tailscale >/dev/null
+fi  # TAILSCALE_SUBNET_ROUTER
 
 # --- k0sctl -------------------------------------------------------------------
 # The node bootstrap runs on this host and installs k0s into the VMs with it.
@@ -335,31 +352,36 @@ banlieue host cloud-hypervisor install \
 
 # --- Summary ------------------------------------------------------------------
 # Also true on a re-run before the reboot that the first run asked for.
-grep -qw 'iommu=pt' /proc/cmdline || REBOOT_NEEDED=1
+if gpu_passthrough; then grep -qw 'iommu=pt' /proc/cmdline || REBOOT_NEEDED=1; fi
 if (( REBOOT_NEEDED )); then
   log "Done. Reboot, then re-run this script to verify (it changes nothing the second time)."
   exit 0
 fi
 
-log "GPU functions (all must say vfio-pci):"
-bad=0
-for f in "$GPU_PCI_SLOT".{0,1,2,3}; do
-  drv=$(basename "$(readlink "/sys/bus/pci/devices/$f/driver" 2>/dev/null)" 2>/dev/null || true)
-  printf '    %s  %s  iommu_group=%s\n' "$f" "${drv:-none}" \
-    "$(basename "$(readlink "/sys/bus/pci/devices/$f/iommu_group")")"
-  [[ "$drv" == vfio-pci ]] || bad=1
-done
-(( bad )) && log "WARNING: not every GPU function is on vfio-pci; see docs/02 (troubleshooting)"
+if gpu_passthrough; then
+  log "GPU functions (all must say vfio-pci):"
+  bad=0
+  for d in /sys/bus/pci/devices/"$GPU_PCI_SLOT".*; do
+    f="$(basename "$d")"
+    drv=$(basename "$(readlink "$d/driver" 2>/dev/null)" 2>/dev/null || true)
+    printf '    %s  %s  iommu_group=%s\n' "$f" "${drv:-none}" \
+      "$(basename "$(readlink "$d/iommu_group")")"
+    [[ "$drv" == vfio-pci ]] || bad=1
+  done
+  (( bad )) && log "WARNING: not every GPU function is on vfio-pci; see the GPU passthrough guide (troubleshooting)"
+fi
 log "$LAB_BRIDGE: $(ip -br addr show "$LAB_BRIDGE" | awk '{print $3}')"
-if ! tailscale status >/dev/null 2>&1; then
+if [[ "$TAILSCALE_SUBNET_ROUTER" != true ]]; then
+  :
+elif ! tailscale status >/dev/null 2>&1; then
   log "Tailscale is not logged in. Once, interactively:"
   log "  sudo tailscale up --advertise-routes=$LAB_CIDR --accept-dns=false"
   log "  then approve the route in the Tailscale admin console"
 elif [[ "$(tailscale debug prefs 2>/dev/null | jq -r .CorpDNS)" == true ]]; then
   # MagicDNS would make tailscale0 the host's (and so the VMs') default DNS
-  # route; it made name resolution flaky here. A subnet router doesn't need
-  # tailnet names: keep the Wi-Fi network's DNS.
+  # route; it made name resolution flaky. A subnet router doesn't need
+  # tailnet names: keep the uplink's DNS.
   log "Tailscale: not taking over host DNS (--accept-dns=false)"
   tailscale set --accept-dns=false
 fi
-log "Next: sudo ./bootstrap/host/gpu-smoke-vm.sh up"
+if gpu_passthrough; then log "Next: sudo ./bootstrap/host/gpu-smoke-vm.sh up"; fi

@@ -3,7 +3,11 @@
 # `banlieue bootstrap operator` applies, and what clusterctl installs for the
 # `banlieue` InfrastructureProvider. It carries literal ${FQDN}/${VM_NAME}
 # templates, so its Flux Kustomization must NOT enable postBuild substitution.
+#
+# admission-policies.yaml: banlieue's ValidatingAdmissionPolicies (ADR-0007),
+# minus its one MutatingAdmissionPolicy until mgmt runs Kubernetes 1.36+.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - infrastructure-components.yaml
+  - admission-policies.yaml

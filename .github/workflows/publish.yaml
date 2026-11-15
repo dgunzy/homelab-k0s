@@ -52,7 +52,7 @@ jobs:
             --path=. \
             --source="${{ github.server_url }}/${{ github.repository }}" \
             --revision="main@sha1:${sha}" \
-            --add-ignore-paths="bootstrap/,docs/,hack/,schemas/,.github/,*.md" \
+            --add-ignore-paths="bootstrap/,docs/,hack/,helpers/,schemas/,.github/,*.md" \
             --output=json | tee push.json
           ref="$(jq -r '.repository + "@" + .digest' push.json)"
           # Sign the digest BEFORE it becomes `latest`, so the cluster never

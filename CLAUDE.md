@@ -1,19 +1,25 @@
-# Homelab GPU cluster
+# GPU Platform Blueprint (repo: homelab-k0s)
 
-Bootstrap repo for a GPU Kubernetes lab on my desktop (dual-boot Linux) with an NVIDIA GPU.
-The desktop is a **KVM hypervisor host**; k0s nodes are Cloud Hypervisor VMs on it, and the GPU
-is passed through to a worker VM. Purpose: learn GPU workloads on Kubernetes, GPU node lifecycle
-(Cluster API, node images, health/remediation), inference serving, and agents, using the same
-building blocks production GPU clouds use (VFIO passthrough, GPU Operator, DCGM, CAPI, batch
-schedulers). This is a learning lab, not production, but treat it like a real platform:
-declarative, reproducible, versioned. Design and reasons: `docs/02-virtualized-gpu-cluster.md`.
+A **reference architecture** for GPU inference and sandboxed AI agents on Kubernetes, built the
+way GPU platforms are: bare-metal **hypervisor hosts** (Cloud Hypervisor via banlieue, GPUs passed
+through with VFIO), a small **management cluster** (Flux Operator, Cluster API, k0smotron,
+banlieue), **hosted control planes** and node pools of VMs for one or more **workload clusters**
+(inference and agents together or split), and **gitless GitOps** from a signed OCI artifact.
+Treat it like a real platform: declarative, reproducible, versioned, scalable beyond one host.
 
-## Hardware and host
+The repo is the architecture; my desktop is just the **example deployment** (one host). Keep
+host-specific details in `bootstrap/host/hosts/<host>.env`, `helpers/` and the docs'
+"Example deployment" section, not in the architecture pages or generic scripts.
 
-- Desktop "k0s-gpu-01": i7-8700 (6c/12t), 16 GB RAM (2× 8 GB in the DIMM2 slots; DIMM1 slots
+Docs site: `docs/` (Astro Starlight under Bun, published to GitHub Pages by
+`.github/workflows/docs.yaml`). The docs are the design record: update them with changes.
+
+## Example deployment: the one host today
+
+- Desktop "k0s-gpu-01" (config: `bootstrap/host/hosts/k0s-gpu-01.env`): i7-8700 (6c/12t), 16 GB RAM (2× 8 GB in the DIMM2 slots; DIMM1 slots
   free, upgrade undecided), RTX 2070 (Turing TU106, 8 GB VRAM, compute capability 7.5).
   Dual-boots with Windows.
-- Linux distro: Ubuntu Server 24.04.5 LTS, installed via autoinstall (`bootstrap/install/`).
+- Linux distro: Ubuntu Server 24.04.5 LTS, installed via autoinstall (`helpers/os-install/`).
 - Disks: Linux owns **only** the ADATA SU650 240 GB SSD (own ESP + LVM). The WD 1 TB SSD is
   Windows; the WD 1 TB HDD is unused (candidate for Linux bulk storage later; ask first).
 - Network: **Wi-Fi only** (Intel AC 9461, `wlo1`), on a mesh router behind the ISP router
@@ -44,21 +50,22 @@ declarative, reproducible, versioned. Design and reasons: `docs/02-virtualized-g
 
 ```
 bootstrap/        everything before Flux
-  install/        OS install: autoinstall templates + USB builder (run from Windows)
-  host/           hypervisor host prep + GPU smoke VM (run on the host)
+  host/           hypervisor host prep, per-host configs (hosts/<host>.env), GPU smoke VM, VM image seeding
   node/           in-VM prep (GPU worker driver)
   cluster/        management cluster: mgmt.env + bootstrap-mgmt.sh (wraps banlieue's pinned script)
 clusters/homelab/ Flux entry point: FluxInstance, flux-operator self-update, add-on Kustomizations
 infrastructure/   vendored add-on manifests, one dir each: cert-manager, cluster-api, k0smotron,
                   banlieue, hosts (banlieue Providers); later gpu-operator, monitoring, kueue
-apps/             workloads: inference servers, agent sandboxes (added later)
+apps/             workloads (today: the smoke VM)
 hack/vendor.sh    pins + re-vendoring of infrastructure/ and schemas/
 schemas/          JSON schemas for CRDs missing from the flux-schema catalog (banlieue)
-.github/workflows validate (flux-schema + shellcheck), publish (signed OCI artifact)
-docs/             notes on what I learned and why things are set up this way
+.github/workflows validate (flux-schema + shellcheck), publish (signed OCI artifact), docs (Pages)
+docs/             the docs site (Astro Starlight + React Flow diagrams, Bun); content in docs/src/content/docs/
+helpers/          optional, example-host specific: os-install (USB autoinstall from Windows), dual-boot
+notes/            gitignored personal notes: upstream (banlieue) issue drafts, specs, tracking
 ```
 
-## GitOps (docs/03)
+## GitOps (docs: architecture/gitops)
 
 - Gitless: CI pushes the repo as an OCI artifact `ghcr.io/dgunzy/homelab-k0s-manifests`
   (`:<short-sha>` and `:latest`), signed with cosign keyless; the FluxInstance verifies the
@@ -68,6 +75,10 @@ docs/             notes on what I learned and why things are set up this way
 - To bump an add-on: change its pin in `hack/vendor.sh`, run it, review the diff. banlieue's
   version also lives in `prepare-host.sh` and `bootstrap-mgmt.sh`; keep the three in step.
 - Never enable `postBuild` substitution on banlieue's Kustomization (literal `${FQDN}` templates).
+- banlieue VMs on the Cloud Hypervisor host must be in `banlieue-system` (VMs only schedule onto
+  Providers in their own namespace; External Providers live there). Images are raw `BackingFile`s
+  placed by `bootstrap/host/seed-vm-images.sh`; catalog in `infrastructure/vm-catalog/`.
+- Use `providers.banlieue.io`, not `provider`, with kubectl (Cluster API has a `Provider` kind too).
 
 ## Virtualization (banlieue + Cloud Hypervisor)
 
@@ -80,8 +91,9 @@ docs/             notes on what I learned and why things are set up this way
 - Everything after that is declarative: banlieue `VirtualMachine`/`VirtualMachinePool`, and
   Cluster API with banlieue as infrastructure provider and k0smotron as hosted control plane.
 - banlieue is `v1alpha1` and moves fast. Pin it and read its ADRs (`docs/adr/`) before relying
-  on behaviour. Known gaps: no PCI/GPU passthrough in the API, global VM sizing in the bootstrap
-  script (docs/02, "Gaps").
+  on behaviour. Upstream gaps and issues (GPU passthrough #190, CAPI bootstrap data #191, ...)
+  are tracked in the gitignored `notes/banlieue-upstream.md`, not in the docs: they're not part
+  of the architecture story.
 
 ## Network
 
@@ -95,6 +107,11 @@ docs/             notes on what I learned and why things are set up this way
 
 ## k0s specifics (easy to get wrong)
 
+- Kubernetes: **latest minor everywhere** (1.37, `K0S_VERSION` in `bootstrap/cluster/mgmt.env`, kubectl
+  pin in `prepare-host.sh`). Running clusters upgrade one minor at a time:
+  `bootstrap-mgmt.sh upgrade` walks `K0S_UPGRADE_PATH`. Check add-on support matrices first
+  (cert-manager v1.21 officially stops at 1.36). Remove the MutatingAdmissionPolicy filter in
+  `hack/vendor.sh` only after the live cluster is on 1.36+.
 - k0s runs **inside the VMs**, never on the host.
 - k0s ships its **own containerd**: socket `/run/k0s/containerd.sock`, and it imports drop-in
   config from `/etc/k0s/containerd.d/*.toml`. Tools that assume `/etc/containerd/config.toml`
@@ -128,21 +145,23 @@ docs/             notes on what I learned and why things are set up this way
 - Start with Ollama or llama.cpp; try vLLM with small models once the basics work.
 - Wi-Fi is ~70 Mbps: multi-GB CUDA images and model weights are slow to pull. Cache, don't re-pull.
 
-## Roadmap (rough order; details and exit checks in docs/02)
+## Roadmap (rough order; status and exit checks in docs: reference/roadmap)
 
 1. ~~Hypervisor host + GPU passthrough proven with the smoke VM~~ (done 2026-11-14)
-2. Management cluster (one CH VM) + Flux via **Flux Operator** (`FluxInstance`, not
-   `flux bootstrap`); banlieue, Cluster API, k0smotron as add-ons under `infrastructure/`
-3. One child cluster, `workload` (k0smotron-hosted control plane, k0s 1.36+ with Substrate's
-   feature gates), node pools `cpu` (cpu-01) and `gpu` (gpu-01, needs GPU passthrough in
-   banlieue: contribute upstream); GPU Operator, CUDA test pod passing. mgmt stays tiny.
+2. ~~Management cluster (one CH VM) + Flux via **Flux Operator**; banlieue, Cluster API,
+   k0smotron as add-ons; a test VirtualMachine through banlieue~~ (done 2026-11-14)
+3. Upgrade mgmt to Kubernetes 1.37 (`bootstrap-mgmt.sh upgrade`), drop the MAP filter. Then
+   workload cluster(s) via Cluster API: k0smotron-hosted control plane (k0s 1.37 with
+   Substrate's feature gates), node pools `cpu` and `gpu`; GPU Operator, CUDA test pod passing.
+   One combined cluster on this host; the architecture supports many (e.g. inference split
+   from agent clusters). mgmt stays tiny.
 4. Node image pipeline: driver baked in, signed, SBOM, CVE gate, rolling image upgrades
 5. DCGM exporter + Prometheus/Grafana; health and remediation (NVSentinel vs. my own controller
    in Rust or Go), MachineHealthCheck, fault injection
 6. Scheduling: time-slicing vs MPS, Kueue, KAI Scheduler, DRA; Slurm on Kubernetes (Slinky)
-7. In the `workload` cluster: inference server on the `gpu` pool; Agent Substrate (CNCF, gVisor
-   mode; no KVM in our VMs, no GPUs for actors yet) on the `cpu` pool; agents reach inference
-   through Substrate's egress gateway
+7. Workloads: inference server on GPU pools; Agent Substrate (CNCF, gVisor mode; no KVM in our
+   VMs, no GPUs for actors yet) on CPU pools; agents reach inference through Substrate's egress
+   gateway (same cluster, or across clusters)
 8. bindy for lab DNS once there are LoadBalancer Services / Gateway routes to name
 
 ## How I like to work
@@ -150,4 +169,7 @@ docs/             notes on what I learned and why things are set up this way
 - I'm a platform engineer (Kubernetes, Flux, Flux Operator contributor). Skip basics; explain
   GPU/inference/virtualization-specific concepts when they come up. That's the part I'm learning.
 - Prefer Rust or Go for any custom tooling; bash is fine for bootstrap glue.
-- Keep changes small and explain *why*, so `docs/` can capture what I learned.
+- Keep changes small and explain *why*, so the docs site can capture it.
+- Docs diagrams: interactive React Flow components (`docs/src/components/flow/`); each diagram is
+  a data file in `diagrams/` (layers, nodes with real project logos from `src/assets/logos/`,
+  edges). Check new diagrams in a browser (light and dark) before calling them done.

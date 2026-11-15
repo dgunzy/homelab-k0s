@@ -1,0 +1,77 @@
+---
+title: GitOps and supply chain
+description: Gitless Flux from a signed OCI artifact, schema-validated in CI, with vendored release manifests and no Helm.
+---
+
+import ArchitectureFlow from '../../../components/flow/ArchitectureFlow';
+
+After the first node exists, every change to the platform goes through the repository:
+validated in CI, published as a signed OCI artifact, and applied by Flux only if the signature
+checks out.
+
+<ArchitectureFlow client:visible name="gitops" />
+
+## Flux Operator, not `flux bootstrap`
+
+Flux itself is described by a `FluxInstance` in the repository and reconciled like everything
+else. Flux's configuration is reviewable, and there's no deploy key or generated
+`gotk-components.yaml` to maintain.
+
+The reference follows the latest Flux 2.x by itself: the `FluxInstance` asks for `2.x`, and the
+operator upgrades Flux when a new release appears in its signed distribution artifact. The
+operator updates itself the same way, with pruning disabled so a bad artifact can never delete
+it. Everything else is pinned.
+
+## Gitless: the cluster pulls an OCI artifact
+
+CI pushes the repository's manifests to a container registry as an OCI artifact, tagged with
+the commit and with `latest`. The cluster pulls the artifact, not Git.
+
+- No Git credentials in the cluster; registry pulls are cheap and cacheable.
+- Only commits that passed validation are published: the publish job runs on the validate job's
+  success, at that commit.
+- The artifact is self-contained, so reconciling never fetches anything from the internet
+  beyond the artifact itself.
+
+## Signed, and verified on pull
+
+CI signs each artifact's **digest** with cosign *keyless*: the certificate is issued for the CI
+workflow's OIDC identity, so there's no signing key to manage or leak. The cluster's
+`OCIRepository` verifies the signature against that exact identity (this repository's publish
+workflow, on `main`) and refuses anything else, including artifacts pushed with a leaked
+registry token. The digest is signed *before* it's tagged `latest`, so the cluster never sees an
+unsigned `latest`.
+
+## No Helm: raw release manifests, vendored
+
+Every add-on is applied from the manifest its project publishes per release
+(`cert-manager.yaml`, `core-components.yaml`, ...). `hack/vendor.sh` downloads them at pinned
+versions, verifies checksums where the project publishes them, and stamps each with its source.
+
+- A version bump is a reviewable diff of exactly what will be applied.
+- There's no helm-controller and no chart repository in the cluster.
+- **No clusterctl or Cluster API Operator either.** clusterctl's job is mostly substituting
+  `${VAR:=default}` placeholders in provider manifests; Flux's `postBuild` substitution does the
+  same, so Flux applies the provider components directly.
+
+## Ordered with `dependsOn` and `wait`
+
+One Flux Kustomization per add-on, chained with `dependsOn`. `wait: true` makes each one Ready
+only when what it applied is healthy, so Cluster API really starts after cert-manager is
+serving: cert-manager → Cluster API → k0smotron, banlieue → hosts → VM catalog → workloads.
+
+## Validated before merge
+
+Every directory with a `kustomization.yaml` is built the way kustomize-controller builds it, and
+every resulting object is checked against its JSON schema **and its CEL validation rules**,
+offline, with [flux-schema](https://fluxcd.io/flux/cli-plugins/flux-schema/). Schemas come from
+the built-in catalog (Kubernetes, Flux), the CNCF ecosystem catalog (cert-manager, Cluster API,
+k0smotron, GPU Operator, ...), and `schemas/` for CRDs not in the catalog yet. The same
+`.fluxschema.yml` drives CI and local runs:
+
+```sh
+flux plugin install schema
+flux schema validate --config .fluxschema.yml clusters/homelab
+```
+
+Bootstrap scripts are linted with ShellCheck in the same workflow.

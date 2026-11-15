@@ -1,0 +1,76 @@
+---
+title: GPUs, done properly
+description: Whole-GPU passthrough, the driver in the guest, sharing in Kubernetes, and health that ends in node replacement.
+---
+
+import ArchitectureFlow from '../../../components/flow/ArchitectureFlow';
+
+GPU nodes here are built the way cloud GPU instances are: a VM with a whole GPU passed
+through. Everything above the VM is ordinary Kubernetes GPU tooling.
+
+<ArchitectureFlow client:visible name="gpu" />
+
+## One GPU, one VM
+
+A GPU can be split between VMs only with technology most cards don't have:
+
+| Option | When it applies |
+|---|---|
+| vGPU (mediated devices) | Licensed vendor host driver and a datacenter card. |
+| MIG | Ampere-and-newer datacenter GPUs. |
+| SR-IOV | Cards that expose virtual functions. |
+
+So the default is **whole-GPU passthrough** to one node VM, and **sharing happens inside
+Kubernetes**: time-slicing, MPS or DRA, decided per workload. If a card supports MIG or vGPU,
+it slots in under the same node pool model.
+
+## Passthrough, step by step
+
+- **IOMMU (VT-d / AMD-Vi).** The device does DMA straight into memory; the IOMMU translates its
+  addresses so it can only reach its own VM's memory. Without it, passthrough would hand the VM
+  all of host memory.
+- **IOMMU groups.** The smallest set of devices the IOMMU can isolate. Everything in a group goes
+  to the same owner. A GPU in a CPU-attached slot is usually alone in its group with its root
+  port, which is the good case; chipset slots often share a group with SATA or USB.
+- **Every function moves.** A consumer card exposes VGA, HDMI audio, and on some generations a
+  USB-C controller. All of them leave their host drivers for `vfio-pci`; only the VGA function
+  has to go to the VM.
+- **VFIO** gives the VMM safe access to the device's config space, memory windows (BARs) and
+  interrupts, all behind the IOMMU.
+- **Guest memory is pinned.** The GPU can DMA anywhere in guest RAM at any time, so all of it is
+  locked in host RAM: no ballooning, no overcommit. A GPU VM's memory is a hard reservation,
+  which is why scale-to-zero matters for GPU pools.
+- **Reset.** Restarting the VM must reset the GPU. Cards with Function Level Reset handle it;
+  otherwise VFIO resets the bus, which works when the card is alone behind its root port.
+
+## The driver lives in the guest
+
+The host loads no vendor driver at all. The driver is installed in the GPU node's image,
+pinned to a long-term-support branch. Two consequences:
+
+- **Driver and kernel are a pair.** Installing a prebuilt driver module can pull a newer kernel
+  with it. Node images pin both and are tested together; an upgrade is a new image rolled
+  through the node pool.
+- **The GPU Operator runs with `driver.enabled=false`** and adds the container toolkit (pointed
+  at k0s's containerd), the device plugin, GPU feature discovery and DCGM. Its containerized
+  driver is the alternative for immutable node images.
+
+## Health ends in replacement
+
+GPU faults (Xid errors, ECC errors, falling off the bus, thermal events) are reported by DCGM.
+The remediation loop is the point of having nodes as Cluster API machines:
+
+1. **Detect:** DCGM exporter metrics and health checks, plus kernel log Xids.
+2. **Isolate:** cordon or taint the node so nothing new lands on it.
+3. **Drain:** move workloads off, respecting disruption budgets.
+4. **Replace:** a `MachineHealthCheck` deletes the `Machine`; Cluster API creates a fresh VM.
+
+Because nodes are VMs, faults can be **injected** on purpose: hot-unplug the GPU from a running
+guest, kill its VMM, fill its disk, then watch the loop work. Real hardware rarely fails on
+schedule.
+
+## Status
+
+Passthrough works end to end: a guest on the example host runs `nvidia-smi` on its passed-through
+card, and survives a full power-off with a clean reset. GPU node pools, the GPU Operator and the
+health loop are on the [roadmap](../../reference/roadmap/).

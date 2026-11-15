@@ -1,6 +1,6 @@
 # Ubuntu Server 24.04 autoinstall for k0s-gpu-01
 #
-# This is a TEMPLATE. bootstrap/install/build-usb.ps1 fills in the
+# This is a TEMPLATE. helpers/os-install/build-usb.ps1 fills in the
 # double-underscore placeholders (Wi-Fi credentials, password hash, SSH keys) and writes the result to the
 # root of the USB stick as /autoinstall.yaml. Secrets never land in git.
 #
@@ -11,8 +11,7 @@
 # Target disk: ADATA SU650 240 GB SSD (the ONLY disk Linux may touch)
 #   - Windows lives on the WD 1 TB SSD; the WD 1 TB HDD is left alone.
 #
-# Lessons from the first install (docs/01-host-install.md, "Install
-# retrospective"): the live ISO has no wpa_supplicant, so Wi-Fi never came up
+# Lessons from the first install (docs site: "OS install helper"): the live ISO has no wpa_supplicant, so Wi-Fi never came up
 # and the install ran offline. Offline, any package not on the ISO aborts the
 # install, which is why late-commands (sudoers) never ran. This template is
 # written so an offline install still finishes with SSH, Wi-Fi and sudo.
@@ -76,7 +75,7 @@ autoinstall:
 __SSH_AUTHORIZED_KEYS__
 
   # The NVIDIA driver is deliberately NOT installed here, and never on this
-  # host: the GPU is passed through to a VM (docs/02). The driver is
+  # host: the GPU is passed through to a VM. The driver is
   # installed inside that VM by bootstrap/node/prepare-gpu-node.sh.
   drivers:
     install: false

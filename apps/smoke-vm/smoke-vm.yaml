@@ -1,0 +1,42 @@
+# Phase 2 exit check: one VM created through banlieue's API (not by hand),
+# scheduled onto this host's Provider, booted by its Cloud Hypervisor
+# provider, addressed by DHCP on br-lab.
+#
+# Namespace: banlieue schedules a VM only onto Providers in the VM's own
+# namespace, and External Providers (Cloud Hypervisor hosts) live in
+# banlieue-system. banlieue's controller can read user-data there already.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smoke-01-cloud-config
+  namespace: banlieue-system
+data:
+  user-data: |
+    #cloud-config
+    hostname: smoke-01
+    ssh_pwauth: false
+    # Public keys only: github.com/dgunzy.keys and the host's ops key.
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGxI+AhHSAQsuSDr7FVAkzyiaqUfKDcxN0d49fGQ9hZw
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOpldD1pFLk9wK2tYy8iIihcuz7swFZH5CDdNlNj+Ndw
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINGnN+9TMmWi5S1vEz+kXoVcWQe14AzgqrgqxKk1GtBh ops@k0s-gpu-01
+---
+apiVersion: banlieue.io/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: smoke-01
+  namespace: banlieue-system
+spec:
+  classRef:
+    name: small
+  imageRef:
+    name: ubuntu-24.04-20261017
+  placement:
+    providerSelector:
+      matchLabels:
+        homelab/host: k0s-gpu-01
+  userData:
+    configMapRef:
+      name: smoke-01-cloud-config
+  desiredPowerState: PoweredOn
+  migrationPolicy: never
