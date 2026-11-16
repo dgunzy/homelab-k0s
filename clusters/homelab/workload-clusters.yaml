@@ -2,15 +2,15 @@
 # applied to the management cluster. Another cluster is another directory
 # under workload-clusters/ and another Kustomization here.
 #
-# Suspended: set suspend to false in git to create it. The management cluster
-# is on 1.37; the remaining gate is host RAM while GPU passthrough is tested.
+# suspend: true pauses a cluster's definition (Flux stops applying it; what
+# exists keeps running).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: ai-01
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false
   dependsOn:
     - name: k0smotron
     - name: banlieue

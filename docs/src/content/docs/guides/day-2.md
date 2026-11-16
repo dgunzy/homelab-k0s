@@ -57,10 +57,14 @@ given minor) land after the upgrade, not before.
 
 - **Re-run `prepare-host.sh` any time.** It's idempotent; a run that changes nothing is the
   health check.
-- **Host reboots** need nothing: node VMs start with the host, then the cluster, then Flux, then
-  the provider reconnects.
-- **Provider credential expired** (host off for longer than a token lifetime):
-  `bootstrap-mgmt.sh provider`.
+- **Host reboots and shutdowns** need nothing, including a power cut. A clean shutdown (a short
+  press of the power button, `poweroff`) stops each VM through its virtual ACPI button and waits
+  for it, which can take a minute or two while the console looks frozen (the GPU belongs to
+  VFIO). Don't hold the button. If power is lost anyway, the management node's disk is checked
+  and its leaked clusters freed before the VM starts again (`bootstrap-mgmt.sh resilience`
+  installs that and the next item).
+- **Provider credential expired** (host off for longer than its token's remaining 12–24 h):
+  `homelab-heal.service` notices on boot and issues a new one; by hand, `bootstrap-mgmt.sh provider`.
 - **Restarting the host provider** doesn't touch running VMs; they're their own systemd units.
 
 ## Useful queries

@@ -43,6 +43,9 @@ Docs site: `docs/` (Astro Starlight under Bun, published to GitHub Pages by
 - **No Helm / HelmReleases.** Add-ons are their projects' raw release manifests, vendored by
   `hack/vendor.sh` at pinned versions, applied by Flux Kustomizations. No CAPI Operator or
   clusterctl either: Flux `postBuild` substitution resolves clusterctl `${VAR:=default}` placeholders.
+  A project that ships only a Helm chart (NVIDIA GPU Operator) is rendered once by `hack/vendor.sh`
+  (`helm template`, pinned chart checksum, values in `hack/values/`, `--no-hooks`) and committed as
+  plain manifests: no Helm runs in any cluster.
 - No secrets in git. Plan is SOPS + age once Flux is in place.
 - Don't execute scripts from downloaded third-party repos to explore them; read them.
 
@@ -58,8 +61,12 @@ infrastructure/   vendored add-on manifests, one dir each: cert-manager, cluster
                   banlieue, hosts (banlieue Providers); later gpu-operator, monitoring, kueue
 apps/             workloads (today: the smoke VM)
 workload-clusters/<name>/  Cluster API definition of a workload cluster (Cluster, K0smotronControlPlane,
-                  one MachineDeployment + templates per pool); Flux: clusters/homelab/workload-clusters.yaml
-hack/vendor.sh    pins + re-vendoring of infrastructure/ and schemas/
+                  one MachineDeployment + templates per pool, MachineHealthChecks, and addons.yaml:
+                  Flux Kustomizations that apply cluster-addons/ INTO it via its CAPI kubeconfig
+                  Secret, hub and spoke); Flux: clusters/homelab/workload-clusters.yaml
+cluster-addons/   vendored add-ons for workload clusters (today: gpu-operator)
+hack/vendor.sh    pins + re-vendoring of infrastructure/, cluster-addons/ and schemas/;
+                  hack/values/ holds chart values for chart-only projects
 schemas/          JSON schemas for CRDs missing from the flux-schema catalog (banlieue)
 .github/workflows validate (flux-schema + shellcheck), publish (signed OCI artifact), docs (Pages)
 docs/             the docs site (Astro Starlight + React Flow diagrams, Bun); content in docs/src/content/docs/
@@ -81,6 +88,14 @@ notes/            gitignored personal notes: upstream (banlieue) issue drafts, s
   Providers in their own namespace; External Providers live there). Images are raw `BackingFile`s
   placed by `bootstrap/host/seed-vm-images.sh`; catalog in `infrastructure/vm-catalog/`.
 - Use `providers.banlieue.io`, not `provider`, with kubectl (Cluster API has a `Provider` kind too).
+- External (CH) Providers must live in `banlieue-system` (only there may the operator grant host
+  token renewal), so CAPI clusters on a CH host and their k0smotron hosted control plane pods do
+  too. Those pods need root, so `infrastructure/banlieue/kustomization.yaml` patches the namespace
+  to Pod Security `enforce: privileged` (warn/audit stay `restricted`). Revert when banlieue allows
+  External Providers in other namespaces (issue draft in notes/).
+- A CAPI `Cluster` on CH hosts has no `infrastructureRef`, so k0smotron never fills
+  `Cluster.spec.controlPlaneEndpoint`: declare it (mgmt-01:NodePort, matching the
+  K0smotronControlPlane's `externalAddress`/`apiPort`) or workers never get join data.
 - CAPI machines (`CloudHypervisorMachineTemplate`) name the host's own class names
   (`storageClass: default`, `networkClass: default`), not the Provider's abstract
   `standard`/`lab` that VMClasses use. banlieue (v0.5.8+, ADR-0129) copies each Machine's
@@ -157,10 +172,10 @@ notes/            gitignored personal notes: upstream (banlieue) issue drafts, s
 2. ~~Management cluster (one CH VM) + Flux via **Flux Operator**; banlieue, Cluster API,
    k0smotron as add-ons; a test VirtualMachine through banlieue~~ (done 2026-11-14)
 3. ~~Upgrade mgmt to Kubernetes 1.37, drop the MAP filter~~ (done 2026-11-15). Then
-   workload cluster `ai-01` (`workload-clusters/ai-01/`, written; its Flux Kustomization is
-   `suspend: true` until I flip it in git): k0smotron-hosted control plane (k0s 1.37), node pools
-   `cpu` (written) and `gpu` (needs banlieue GPU passthrough, #190); GPU Operator, CUDA test
-   pod passing. Substrate's feature gates go on the control plane in phase 7.
+   workload cluster `ai-01` (`workload-clusters/ai-01/`; enabled in git 2026-11-15): k0smotron-hosted control plane (k0s 1.37), node pools
+   `cpu` (written, with a MachineHealthCheck) and `gpu` (needs banlieue GPU passthrough, #190;
+   draft in notes/ai-01-pool-gpu.draft.yaml); GPU Operator (vendored, its delivery into ai-01
+   in `addons.yaml` is `suspend: true` until the gpu pool exists), CUDA test pod passing. Substrate's feature gates go on the control plane in phase 7.
    One combined cluster on this host; the architecture supports many (e.g. inference split
    from agent clusters). mgmt stays tiny.
 4. Node image pipeline: driver baked in, signed, SBOM, CVE gate, rolling image upgrades

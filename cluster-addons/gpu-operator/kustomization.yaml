@@ -1,0 +1,8 @@
+# NVIDIA GPU Operator for workload clusters with a gpu pool (hack/vendor.sh):
+# container toolkit, device plugin, GPU feature discovery, DCGM exporter, on
+# nodes that have an NVIDIA GPU. The driver comes with the node image.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - gpu-operator.yaml

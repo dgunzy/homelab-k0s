@@ -32,8 +32,11 @@ the Wi-Fi password.
 
 `helpers/dual-boot/reboot-to-windows.sh` boots Windows once (UEFI `BootNext`) and leaves Linux
 as the default, so unattended reboots and power cuts always come back as a host. With
-`DUAL_BOOT=true` in the host config, `prepare-host.sh` installs it and shows a 10-second GRUB
-menu with a Windows entry.
+`DUAL_BOOT=true` in the host config, `prepare-host.sh` installs it and shows a 15-second GRUB
+menu with a Windows entry, drawn in the firmware's text console. GRUB's default graphical
+terminal switches video mode first; a monitor on the passed-through GPU can spend the whole
+countdown re-syncing, so the menu seems never to appear. If that happens, `systemd-analyze`
+tells you whether GRUB waited: its "loader" time includes the menu's countdown.
 
 ## Install retrospective
 

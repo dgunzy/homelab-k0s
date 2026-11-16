@@ -23,6 +23,9 @@ BANLIEUE_VERSION="v0.5.8"         # keep in step with prepare-host.sh (host bina
 BANLIEUE_COMPONENTS_SHA256="ac6f145385bce3fa402b1f8480485361d6318f798c6cb325db39766ea9875d04"
 BANLIEUE_CRDS_SHA256="c1cffa32857cbdab40022c92a96eb57353f035711317b0b06818ef980b0e8a17"
 BANLIEUE_ADMISSION_SHA256="156b0a4660cfa69aa140137f2bf22600bb257422e125a273dd5189a73779fa10"
+# Workload-cluster add-ons (cluster-addons/), applied into workload clusters.
+GPU_OPERATOR_VERSION="v26.7.2"
+GPU_OPERATOR_CHART_SHA256="a94a88628a90fac1df8d47469baf14dd352126553f30fd1ecd8e182516ae1bf6"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
@@ -96,4 +99,22 @@ curl -fsSL -o "$tmp/crds.yaml" "$(gh_dl firestoned/banlieue "$BANLIEUE_VERSION" 
 rm -rf "$root/schemas/banlieue.io" "$root/schemas/infrastructure.banlieue.io"
 flux schema extract crd -d "$root/schemas" "$tmp/crds.yaml" >/dev/null
 
-log "Done. Review with: git diff --stat infrastructure schemas"
+# NVIDIA ships the GPU Operator only as a Helm chart, so it is rendered here,
+# once, at the pinned version with hack/values/gpu-operator.yaml: the cluster
+# still gets plain manifests and no Helm runs anywhere at reconcile time.
+# --no-hooks drops Helm's lifecycle Jobs (CRD upgrade, cleanup on uninstall):
+# the CRDs are rendered in (--include-crds) and Flux prunes on removal.
+log "cluster-addons/gpu-operator <- NVIDIA GPU Operator $GPU_OPERATOR_VERSION chart"
+curl -fsSL -o "$tmp/gpu-operator.tgz" \
+  "https://helm.ngc.nvidia.com/nvidia/charts/gpu-operator-$GPU_OPERATOR_VERSION.tgz"
+[[ "$(shasum -a 256 "$tmp/gpu-operator.tgz" | awk '{print $1}')" == "$GPU_OPERATOR_CHART_SHA256" ]] \
+  || { echo "checksum mismatch for gpu-operator chart" >&2; exit 1; }
+{ printf '# Vendored by hack/vendor.sh. Do not edit; change the pin or values and re-run.\n'
+  printf '# Source: NVIDIA GPU Operator %s Helm chart (sha256 %s),\n' "$GPU_OPERATOR_VERSION" "$GPU_OPERATOR_CHART_SHA256"
+  printf '# rendered with hack/values/gpu-operator.yaml (helm template --include-crds --no-hooks).\n'
+  helm template gpu-operator "$tmp/gpu-operator.tgz" --namespace gpu-operator \
+    --include-crds --no-hooks --kube-version 1.37.2 \
+    --values "$root/hack/values/gpu-operator.yaml"; } \
+  > "$root/cluster-addons/gpu-operator/gpu-operator.yaml"
+
+log "Done. Review with: git diff --stat infrastructure cluster-addons schemas"

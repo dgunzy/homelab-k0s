@@ -1,0 +1,30 @@
+# Replace a cpu node whose Node stays NotReady (or never shows up): Cluster
+# API deletes the Machine, banlieue deletes the VM, and the MachineDeployment
+# creates a fresh one. The same shape later covers the gpu pool, fed by GPU
+# health conditions instead of Ready alone (roadmap phase 5).
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  name: ai-01-cpu
+  namespace: banlieue-system
+spec:
+  clusterName: ai-01
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: ai-01-cpu
+  checks:
+    # First boot downloads k0s and images over Wi-Fi: give it time.
+    nodeStartupTimeoutSeconds: 1200
+    unhealthyNodeConditions:
+      - type: Ready
+        status: Unknown
+        timeoutSeconds: 300
+      - type: Ready
+        status: "False"
+        timeoutSeconds: 300
+  remediation:
+    triggerIf:
+      # Remediate only while at most one node is unhealthy: a single node
+      # pool still heals, but if a control-plane or network blip makes every
+      # node look unhealthy as the pool grows, nothing gets replaced.
+      unhealthyLessThanOrEqualTo: 1

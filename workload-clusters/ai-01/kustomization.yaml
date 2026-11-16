@@ -5,3 +5,5 @@ kind: Kustomization
 resources:
   - cluster.yaml
   - pool-cpu.yaml
+  - health-cpu.yaml
+  - addons.yaml

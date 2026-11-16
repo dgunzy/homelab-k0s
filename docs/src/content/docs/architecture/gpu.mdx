@@ -53,7 +53,9 @@ pinned to a long-term-support branch. Two consequences:
   through the node pool.
 - **The GPU Operator runs with `driver.enabled=false`** and adds the container toolkit (pointed
   at k0s's containerd), the device plugin, GPU feature discovery and DCGM. Its containerized
-  driver is the alternative for immutable node images.
+  driver is the alternative for immutable node images. NVIDIA ships it only as a Helm chart, so
+  it's rendered to plain manifests at a pinned version when vendoring (`hack/vendor.sh`) and
+  applied into each GPU cluster by the management cluster's Flux; no Helm runs in a cluster.
 
 ## Health ends in replacement
 

@@ -180,20 +180,24 @@ fi  # gpu_passthrough
 
 # --- Dual-boot (optional, DUAL_BOOT=true) ------------------------------------
 if [[ "$DUAL_BOOT" == true ]]; then
-# Show the GRUB menu for 10s with a Windows entry; Ubuntu boots if untouched,
+# Show the GRUB menu for 15s with a Windows entry; Ubuntu boots if untouched,
 # so unattended reboots/power cuts still come back as a cluster host.
 # os-prober only *reads* the Windows ESP to build the menu entry.
 # RECORDFAIL: after an unclean shutdown Ubuntu otherwise waits at the menu
 # (no timeout on some setups), which would strand a headless host.
 # The menu still shows on a passed-through GPU: vfio-pci takes it later in boot.
+# GRUB_TERMINAL_OUTPUT=console: draw the menu in the firmware's text console.
+# GRUB's default gfxterm switches video mode first, and a monitor re-syncing
+# (seconds, on a big display) can miss the whole countdown: the menu "never
+# appears" though GRUB waited (systemd-analyze shows it in "loader" time).
 if ! dpkg-query -W -f='${Status}' os-prober 2>/dev/null | grep -q 'install ok installed'; then
   log "Installing os-prober"
   apt-get install -y os-prober
 fi
 GRUB_DROPIN=/etc/default/grub.d/90-homelab-dualboot.cfg
-want_grub=$'GRUB_TIMEOUT_STYLE=menu\nGRUB_TIMEOUT=10\nGRUB_RECORDFAIL_TIMEOUT=10\nGRUB_DISABLE_OS_PROBER=false'
+want_grub=$'GRUB_TIMEOUT_STYLE=menu\nGRUB_TIMEOUT=15\nGRUB_RECORDFAIL_TIMEOUT=15\nGRUB_DISABLE_OS_PROBER=false\nGRUB_TERMINAL_OUTPUT=console'
 if [[ "$(cat "$GRUB_DROPIN" 2>/dev/null)" != "$want_grub" ]]; then
-  log "Configuring GRUB menu (10s, with Windows)"
+  log "Configuring GRUB menu (15s, text console, with Windows)"
   printf '%s\n' "$want_grub" > "$GRUB_DROPIN"
   GRUB_NEEDED=1
 fi

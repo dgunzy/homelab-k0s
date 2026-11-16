@@ -4,10 +4,24 @@
 # `banlieue` InfrastructureProvider. It carries literal ${FQDN}/${VM_NAME}
 # templates, so its Flux Kustomization must NOT enable postBuild substitution.
 #
-# admission-policies.yaml: banlieue's ValidatingAdmissionPolicies (ADR-0007),
-# minus its one MutatingAdmissionPolicy until mgmt runs Kubernetes 1.36+.
+# admission-policies.yaml: banlieue's admission policies (ADR-0007).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - infrastructure-components.yaml
   - admission-policies.yaml
+patches:
+  # Known trade-off. External (Cloud Hypervisor) Providers must live in
+  # banlieue-system, their machines in the Provider's namespace, and Cluster
+  # API objects with their machines, so k0smotron's hosted control planes
+  # (root, hostPath) run here too. They can't meet Pod Security "restricted",
+  # which banlieue enforces on this namespace. Enforce "privileged"; keep
+  # warn and audit at "restricted" so every violation still shows up.
+  # Revert once banlieue lets External Providers live in tenant namespaces.
+  - target:
+      kind: Namespace
+      name: banlieue-system
+    patch: |
+      - op: replace
+        path: /metadata/labels/pod-security.kubernetes.io~1enforce
+        value: privileged

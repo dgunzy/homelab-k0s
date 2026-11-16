@@ -30,6 +30,13 @@ exception is Flux, which follows its latest 2.x release.
 | banlieue (in-cluster) | v0.5.8 | `hack/vendor.sh` |
 | Flux, Flux Operator | latest 2.x / latest | `clusters/homelab/flux-system/` |
 
+## Workload clusters
+
+| Component | Version | Pinned in |
+|---|---|---|
+| k0s (hosted control plane and workers) | v1.37.2+k0s.1 | `workload-clusters/<name>/` |
+| NVIDIA GPU Operator (chart rendered to manifests; driver disabled) | v26.7.2 | `hack/vendor.sh`, values in `hack/values/gpu-operator.yaml` |
+
 ## Tooling
 
 | Component | Version | Pinned in |

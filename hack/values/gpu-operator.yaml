@@ -1,0 +1,20 @@
+# Values the GPU Operator chart is rendered with (hack/vendor.sh). Not applied
+# by anything at runtime: re-run hack/vendor.sh after changing them.
+
+# The driver is part of the GPU node's image (bootstrap/node/prepare-gpu-node.sh,
+# later the node image pipeline), pinned with its kernel. The operator's
+# containerized driver is the alternative for immutable node images.
+driver:
+  enabled: false
+
+# k0s runs its own containerd: point the container toolkit at k0s's socket
+# and at a drop-in k0s imports (/etc/k0s/containerd.d/*.toml), never at
+# /etc/containerd. Workloads opt in with runtimeClassName: nvidia.
+toolkit:
+  env:
+    - name: CONTAINERD_CONFIG
+      value: /etc/k0s/containerd.d/nvidia.toml
+    - name: CONTAINERD_SOCKET
+      value: /run/k0s/containerd.sock
+    - name: RUNTIME_CLASS
+      value: nvidia

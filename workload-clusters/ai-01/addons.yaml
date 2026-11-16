@@ -1,0 +1,30 @@
+# Add-ons applied *into* ai-01 by the management cluster's Flux (hub and
+# spoke): kubeConfig points at the kubeconfig Secret Cluster API keeps for the
+# cluster, so ai-01 runs no Flux of its own and every cluster's add-ons are
+# reviewed and versioned in this one repository.
+#
+# In banlieue-system because a Kustomization reads its kubeConfig Secret from
+# its own namespace; the source is the same signed OCI artifact as everything.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ai-01-gpu-operator
+  namespace: banlieue-system
+spec:
+  # Switched on together with the gpu pool, once banlieue can pass a GPU
+  # through to a CloudHypervisorMachine (notes: banlieue#190).
+  suspend: true
+  interval: 1h
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: OCIRepository
+    name: flux-system
+    namespace: flux-system
+  path: ./cluster-addons/gpu-operator
+  prune: true
+  wait: true
+  kubeConfig:
+    secretRef:
+      name: ai-01-kubeconfig
+      key: value

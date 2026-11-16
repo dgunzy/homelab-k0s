@@ -19,14 +19,20 @@ spec:
       cidrBlocks: ["10.96.0.0/12"]
   # No infrastructureRef: there is no cluster-level infrastructure to create.
   # The control plane is pods in this cluster and machines are VMs on hosts.
+  # So the endpoint is declared here: k0smotron only propagates its address
+  # through an InfraCluster, and workers get no join data until it's set.
+  # It must match the K0smotronControlPlane's externalAddress and apiPort.
+  controlPlaneEndpoint:
+    host: 10.42.0.11
+    port: 30443
   controlPlaneRef:
     apiGroup: controlplane.cluster.x-k8s.io
     kind: K0smotronControlPlane
     name: ai-01
 ---
 # Hosted control plane: k0s controllers as pods in the management cluster.
-# Nodes reach it through a NodePort on mgmt-01; k0smotron writes that address
-# into the Cluster's controlPlaneEndpoint and the ai-01-kubeconfig Secret.
+# Nodes reach it through a NodePort on mgmt-01 (the Cluster's
+# controlPlaneEndpoint above); k0smotron writes it into ai-01-kubeconfig.
 apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: K0smotronControlPlane
 metadata:

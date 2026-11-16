@@ -80,6 +80,8 @@ Each workload cluster is a directory under `workload-clusters/` and one Flux Kus
 |---|---|
 | `cluster.yaml` | `Cluster`, `K0smotronControlPlane` (k0s 1.37, kine on SQLite, NodePort on the management node) |
 | `pool-cpu.yaml` | `CloudHypervisorMachineTemplate`, `K0sWorkerConfigTemplate`, `MachineDeployment` |
+| `health-cpu.yaml` | `MachineHealthCheck`: a node that stays `NotReady` (or never appears) is replaced |
+| `addons.yaml` | Flux `Kustomization`s that apply `cluster-addons/` *into* ai-01 (GPU Operator) |
 
 How a node joins, end to end:
 
@@ -92,8 +94,21 @@ How a node joins, end to end:
 4. The host's provider boots the VM only then; cloud-init installs k0s and joins the hosted
    control plane through its NodePort.
 
+### Add-ons: hub and spoke
+
+Cluster API keeps each workload cluster's admin kubeconfig as a `Secret` (`<cluster>-kubeconfig`)
+in the management cluster. A Flux `Kustomization` with `spec.kubeConfig` pointing at it applies
+manifests *into* that cluster, so workload clusters run no Flux of their own: one repository,
+one Flux and one signed artifact drive every cluster, and an add-on's rollout to a cluster is a
+reviewed change to that cluster's `addons.yaml`. At a larger scale the alternative is Flux in
+each cluster (Flux Operator can install it there); the trade is fewer moving parts against
+not depending on the management cluster to keep reconciling.
+
 Templates are treated as immutable: a change is a new template (`-v2`) and the
 `MachineDeployment` rolls to it.
 
 The objects live in `banlieue-system` because a Cloud Hypervisor host serves only its own
-`Provider`'s namespace. The [roadmap](../../reference/roadmap/) has what's next: the `gpu` pool.
+`Provider`'s namespace, and a host's `Provider` lives in banlieue's install namespace. The hosted
+control plane's pods therefore run there too; they need root, so the namespace's Pod Security is
+lowered from `restricted` to `privileged` enforcement, with `restricted` warnings and audit kept on.
+That's a deliberate trade-off until banlieue supports hosts' Providers in their own namespaces. The [roadmap](../../reference/roadmap/) has what's next: the `gpu` pool.
